@@ -1,0 +1,16 @@
+# Phase 1 - LLMLingua PoC dependencies
+# Install: pip install -r scripts/phase-01/requirements.txt
+
+google-generativeai>=0.8.0
+python-dotenv>=1.0.0
+datasets>=2.14.0
+
+# LangChain wrapper for LLMLingua
+langchain>=0.2.0
+langchain-community>=0.2.0
+
+# LLMLingua compressor (Microsoft)
+llmlingua>=0.2.1
+
+# Schema validation (used by Phase 0, also for future EvalLog checks)
+jsonschema>=4.20.0
