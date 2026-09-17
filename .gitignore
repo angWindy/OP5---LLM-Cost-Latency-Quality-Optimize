@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Conda
+.conda/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Jupyter
+*.ipynb_checkpoints/
+
+# Logs and large outputs
+logs/
+*.log
+results/
+data/raw/
+data/processed/
+data/cache/
+
+# Secrets / local config
+.env
+.env.local
+*.pem
+*.key
+
+# HuggingFace cache
+hf_cache/
+
+# OS
+Thumbs.db
