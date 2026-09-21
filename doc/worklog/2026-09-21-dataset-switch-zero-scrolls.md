@@ -77,11 +77,11 @@ So sánh trực tiếp với LongBench-v2:
 
 | File | Thay đổi |
 |---|---|
-| `scripts/phase-01/_common.py` | (1) Thêm `DATASETS` registry + `stream_zero_scrolls()`. (2) `detect_fields()` đọc cả `passage` (ZeroSCROLLS) và `context` (LongBench-v2 legacy). (3) `stream_longbench_v2()` giữ làm alias deprecated → `stream_zero_scrolls()`. |
-| `scripts/phase-01/setup_dataset.py` | (1) `--dataset` flag chọn `zero_scrolls` (default) hoặc `longbench_v2`. (2) Output paths: `zero_scrolls_test5.jsonl` + `zero_scrolls_dev95.jsonl` (thay vì `llmlingua_test5.jsonl` + `dev_first95.jsonl`). (3) Stratified sample per-task 6 rows/task (10 tasks → 60 rows). (4) `--no_stratify` để bypass. |
-| `scripts/phase-01/inspect_dataset.py` | `--dataset` flag, default `zero_scrolls`. |
-| `scripts/phase-01/smoke_huggingface.py` | `--dataset` flag, default `zero_scrolls`. ZeroSCROLLS không bắt buộc HF_TOKEN. |
-| `scripts/phase-01/smoke_llmlingua_langchain.py` | Cache path `/tmp/zero_scrolls.json`. Đọc `passage` (ZeroSCROLLS) fallback `context` (legacy). |
+| `scripts/phase-01/_common.py` | (1) Thêm `DATASETS` registry. (2) `ZERO_SCROLLS_TASKS = 9 tasks (bỏ narrative_qa)`. (3) `_download_zero_scrolls_task()` tải zip qua HTTP, idempotent, cache `/tmp/zero_scrolls/`. (4) `stream_zero_scrolls()` yield rows + gắn `task` từ zip filename. (5) `detect_fields()` extract context/question từ `input[*_start_index:*_end_index]`, handle ZeroSCROLLS / LongBench-v2 / SQuAD schemas. (6) `stream_longbench_v2()` giữ làm alias deprecated → `stream_zero_scrolls()`. |
+| `scripts/phase-01/setup_dataset.py` | (1) `--dataset` flag chọn `zero_scrolls` (default) hoặc `longbench_v2` (legacy path dùng `datasets.load_dataset`). (2) `--tasks` flag comma-separated để chọn task subset. (3) `--per_task` stratified cap (default 12). (4) `--no_stratify` để bypass. (5) Output paths: `zero_scrolls_test5.jsonl` + `zero_scrolls_dev95.jsonl`. (6) Cache mặc định `/tmp/zero_scrolls/`. |
+| `scripts/phase-01/inspect_dataset.py` | `--task` flag (default `qasper`, nhỏ nhất 0.3 MB). Tải 1 task zip, in schema 3 rows đầu. |
+| `scripts/phase-01/smoke_huggingface.py` | `--dataset` flag, default `zero_scrolls`. (KHÔNG còn test load_dataset qua `datasets` — chỉ verify HF dataset accessible.) |
+| `scripts/phase-01/smoke_llmlingua_langchain.py` | Giữ nguyên cache `/tmp/zero_scrolls.json` cho row JSON array thủ công. Đọc `passage`/`context` với fallback. |
 | `scripts/phase-01/poc_track1.py` | Docstring + print message: "Streaming ZeroSCROLLS". |
 | `scripts/phase-01/poc_track2.py` | Docstring + print message: "Streaming ZeroSCROLLS". |
 | `scripts/phase-01/diag_llm_call.py` | Docstring note dataset switch. |
@@ -113,31 +113,63 @@ So sánh trực tiếp với LongBench-v2:
 - File JSONL output cũ (`llmlingua_test5.jsonl`, `dev_first95.jsonl`) **không bị xóa**.
   Script mới ghi file mới (`zero_scrolls_test5.jsonl`, `zero_scrolls_dev95.jsonl`).
 
-## 4. Schema của ZeroSCROLLS row
+## 4. Schema của ZeroSCROLLS row (THẬT, sau khi inspect 2026-09-21)
 
-Mỗi row trong `tau/zero_scrolls` (sau khi load qua `datasets.load_dataset`):
+**Schema thực tế** (lấy từ `tau/zero_scrolls` repo + tải về inspect) — **không phải**
+như tôi assume lúc đầu:
 
 ```python
 {
-  "id": str,                # unique row id, vd "narrative_qa_42"
-  "pid": str,               # passage id (grouping cho multi-hop)
-  "passage": str,           # long context (~10k tokens avg)
-  "question": str,          # câu hỏi
-  "answer": str | list[str],# gold answer (string ngắn cho QA, list câu cho summary)
-  "options": list[str],     # multiple choice options (QuALITY) — optional
-  "task": str,              # narrative_qa | qasper | quality | space_digest |
-                            # musique | gov_report | summ_screen | qmsum |
-                            # booksum_sort | triviaqa
-  "summary": str,           # gold summary (task summary) — optional
-  "boolean": bool,          # yes/no (SpaceDigest) — optional
-  ...
+  "id": str,                          # unique row id, vd "3fad42be0fb2052bb404b989cc7d58b440cd23a0"
+  "pid": str,                         # passage id (group nhiều instance của 1 passage)
+  "input": str,                       # prompt + document + separator + question + postfix
+  "output": str,                      # gold answer (string, KHÔNG phải list)
+  "document_start_index": int,        # chars offset của document trong input
+  "document_end_index":   int,        # chars offset end (exclusive)
+  "query_start_index":    int,        # chars offset của question
+  "query_end_index":      int,
+  "truncation_seperator": str,        # "[typo trong tên]" marker cho truncation
+  "inner_docs_start_indices": list    # (multi-hop: musique, space_digest, book_sum_sort)
 }
 ```
 
+**Quan trọng:**
+
+1. **Không có field `passage` / `question` / `answer` riêng** — tất cả ghép trong `input`.
+2. **Context = `input[document_start_index:document_end_index]`**
+3. **Question = `input[query_start_index:query_end_index]`** (một số task như
+   `gov_report`, `summ_screen_fd`, `space_digest`, `book_sum_sort` không có
+   query → `query_start_index == query_end_index`).
+4. **Answer = `output`** (string).
+5. **`task` không có trong row** — lấy từ zip filename (qasper, musique, …).
+6. Dataset dùng **loading script** (`zero_scrolls.py`) — không load được qua
+   `datasets.load_dataset(...)` trên `datasets>=3.4`. Phải download từng task
+   `.zip` và parse JSONL thủ công.
+
+**Per-task statistics (đo 2026-09-21):**
+
+| Task | Test rows | Avg doc chars | Avg query chars | Avg output chars | Type |
+|---|---|---|---|---|---|
+| qasper | 28 | 23k | 62 | 79 | QA (phrase) |
+| musique | 500 | 10k | 111 | 15 | Multi-hop QA (short) |
+| gov_report | 500 | 49k | 0 | 3.8k | Long summary |
+| ~~narrative_qa~~ | ~~860~~ | ~~315k~~ | ~~58~~ | ~~26~~ | **BỎ** (quá lớn) |
+| space_digest | 500 | 30k | 0 | 3 | Numeric (% positive reviews) |
+| summ_screen_fd | 337 | 31k | 0 | 629 | TV recap summary |
+| qmsum | 281 | 58k | 80 | 400 | Meeting summary |
+| squality | 1040 | 29k | 58 | 1.3k | Story summary |
+| quality | 500 | 25k | 398 | 4 | MCQ (output = correct letter hoặc "None") |
+| book_sum_sort | 500 | 39k | 0 | 65 | Sort chapter summaries |
+
 → `detect_fields()` đã được cập nhật để:
-- Đọc `passage` (mới) → `context` (canonical)
-- Đọc `answer` (string hoặc list) → `answer` (canonical, join list nếu cần)
-- Đọc `task` → `task` (canonical, dùng cho stratified sampling)
+- Đọc `input[document_start:end]` → `context`
+- Đọc `input[query_start:end]` → `question`
+- Đọc `output` → `answer` (handle cả string và list)
+- Đọc `task` (được gắn bởi loader từ zip filename) → `task`
+
+**Loại bỏ `narrative_qa`**: context trung bình 315k chars (~80k tokens), lớn hơn
+cả LongBench-v2 (~120k). Nếu cần, có thể bật lại với flag `--tasks narrative_qa`
+trong `setup_dataset.py`.
 
 ## 5. Kế hoạch tiếp theo
 
