@@ -7,7 +7,7 @@ passage, the question, the answer, the task type, etc. We need this BEFORE writi
 the PoC harness.
 
 Usage (from repo root):
-    conda activate po5
+    conda activate vsf
     python scripts/phase-01/inspect_dataset.py --n 3
 """
 from __future__ import annotations

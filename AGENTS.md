@@ -6,7 +6,7 @@
 ## TL;DR
 
 - Side-project. **No company data, no company infra.** Demo providers only.
-- **Conda env:** always `conda activate po5` before running anything Python.
+- **Conda env:** always `conda activate vsf` before running anything Python.
 - **Large folders are ignored by default** (see `.cursorignore`): `data/raw/`, `data/processed/`,
   `data/cache/`, `results/`. Don't try to `Read` or `Grep` them wholesale. Ask the user to
   fetch a slice if you need it.
@@ -40,7 +40,7 @@
 1. Skim `doc/phases/INDEX.md` — find the active phase.
 2. Read its plan file.
 3. Read the most recent worklog.
-4. Confirm `po5` is available (`conda activate po5 && python --version`).
+4. Confirm `vsf` is available (`conda activate vsf && python --version`).
 5. Confirm the user wants you to keep going on the active phase, or pivot.
 
 ## When you finish a session

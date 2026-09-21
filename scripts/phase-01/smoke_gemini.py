@@ -7,7 +7,7 @@ and we can read a response end-to-end. Run BEFORE the full PoC harness to fail f
 on auth / model-name issues.
 
 Usage (from repo root):
-    conda activate po5
+    conda activate vsf
     python scripts/phase-01/smoke_gemini.py
 """
 from __future__ import annotations

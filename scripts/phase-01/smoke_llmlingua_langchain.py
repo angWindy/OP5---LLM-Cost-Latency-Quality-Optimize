@@ -4,7 +4,7 @@ Quick test: LangChain + LLMLingua on ~10 LongBench-v2 samples.
 Show before/after context length, compression ratio, and a preview snippet.
 
 Usage (from repo root):
-    conda activate po5
+    conda activate vsf
     python scripts/phase-01/smoke_llmlingua_langchain.py
 """
 from __future__ import annotations

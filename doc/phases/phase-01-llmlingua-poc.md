@@ -3,7 +3,7 @@
 > **Status:** active
 > **Owner:** —
 > **Started:** 2026-09-17
-> **Updated:** 2026-09-17 — phân tách Track 1 (LLMLingua-2) / Track 2 (LongLLMLingua)
+> **Updated:** 2026-09-21 — bổ sung Approach C: Preselect + Compress combo
 
 ## Goal
 
@@ -19,7 +19,7 @@ Phase 1 này có **2 track song song**, mỗi track test một biến thể comp
 
 We want to know:
 
-1. Cài đặt được cả 2 compressor trong `po5` env không?
+1. Cài đặt được cả 2 compressor trong `vsf` env không?
 2. Từng compressor có shrink được prompt LongBench-v2 trong khi giữ đủ thông tin
    để Gemini trả lời đúng không?
 3. **Compression ratio vs answer-quality delta** cho từng track.
@@ -27,6 +27,77 @@ We want to know:
 
 This is **scoping**, not a full experiment. Không có claim statistical significance — chỉ
 "does it run, does it help, what knobs matter."
+
+---
+
+## 1.5 Approach C: Preselect + Compress (combo, added 2026-09-21)
+
+Ngoài 2 track chính, session 2026-09-21 đã thử thêm **Approach C** —
+kết hợp **RAG preselect** (SentenceTransformer) + **LLMLingua-2 compress**
+trên 1 case LongBench-v2.
+
+### "Preselect + Compress" là gì?
+
+**Preselect + Compress** là phương pháp **2 bước nối tiếp** để giảm context
+cho LLM trước khi gọi Gemini. Hai bước này **bổ sung cho nhau**, mỗi bước
+giải quyết một vấn đề khác nhau:
+
+- **Bước 1 — Preselect:** Cắt bỏ phần context **không liên quan** đến câu hỏi.
+  Dùng SentenceTransformer (22M params) embed tất cả câu + câu hỏi, tính
+  cosine similarity, giữ top-k câu (k=20). Ví dụ: 70k chars → 6k chars (-91.5%).
+- **Bước 2 — Compress:** Nén **các câu đã preselect** xuống mức token tối thiểu.
+  Dùng LLMLingua-2 (560M xlm-roberta) với rate=0.5, giữ 50% tokens quan trọng
+  nhất theo perplexity score.
+
+### Data flow
+
+```
+context (70k chars)
+       │
+       ▼
+┌─────────────────────┐
+│ Preselect            │  SentenceTransformer (22M)
+│ - sentence split     │  cosine similarity
+│ - embed all + q      │  top-k=20 selection
+│ - keep top-20        │
+└─────────┬───────────┘
+          │
+          ▼
+   selected (6k chars, -91.5%)
+          │
+          ▼
+┌─────────────────────┐
+│ Compress             │  LLMLingua-2 (560M xlm-roberta)
+│ - perplexity score   │  rate=0.5
+│ - keep 50% tokens    │
+└─────────┬───────────┘
+          │
+          ▼
+   compressed (929 tokens)
+          │
+          ▼
+     Gemini call
+```
+
+### Tại sao cần cả 2 bước?
+
+LLMLingua-2 chậm tỷ lệ thuận với input length (~850 chars/s CPU). Nếu không
+preselect trước, compressor phải xử lý toàn bộ 70k chars → 81s. Preselect
+giảm đầu vào còn 6k chars → compressor chỉ mất 7s (nhanh hơn 11×).
+
+### Kết quả benchmark (1 case, 70k chars)
+
+| Approach | Total time | Chars kept | Accuracy | Verdict |
+|---|---|---|---|---|
+| Baseline | 1,360 ms | 70,157 (100%) | 0% (wrong) | Reference |
+| A: Compress only | 95,536 ms | 70,157 (100%) | 100% | 70× slower — không đáng |
+| B: Preselect only | 15,046 ms | 5,992 (8.5%) | 100% | 11× slower |
+| **C: Combo** | **13,823 ms** | **5,992 (8.5%)** | **100%** | 10× slower, tốt nhất |
+
+Xem chi tiết tại [`doc/worklog/2026-09-21-3-approach-1case.md`](../worklog/2026-09-21-3-approach-1case.md)
+(section 0 cho giải thích chi tiết, section 2 cho kết quả số).
+
+---
 
 ## Scope (in)
 
@@ -75,7 +146,7 @@ This is **scoping**, not a full experiment. Không có claim statistical signifi
 ## Environment
 
 ```bash
-conda activate po5
+conda activate vsf
 pip install langchain langchain-community google-generativeai datasets python-dotenv jsonschema
 ```
 
@@ -95,7 +166,7 @@ hoặc `os.environ`. **Không commit key.**
 
 - [ ] `smoke_gemini.py` chạy được, in ra response từ `gemini-3.5-flash-lite`.
 - [ ] `inspect_dataset.py` in ra cấu trúc 3 rows đầu của LongBench-v2.
-- [ ] `po5` env có `langchain` + `LLMLinguaCompressor`.
+- [ ] `vsf` env có `langchain` + `LLMLinguaCompressor`.
 - [ ] `poc_track1.py` chạy paired (baseline vs LLMLingua-2) trên ~15 case → `results/phase-01-track1-poc.jsonl`.
 - [ ] `poc_track2.py` chạy paired (baseline vs LongLLMLingua) trên ~15 case → `results/phase-01-track2-poc.jsonl`.
 - [ ] Worklog: ghi lại compression ratio, quality delta, latency cho cả 2 track.
@@ -104,7 +175,7 @@ hoặc `os.environ`. **Không commit key.**
 ## Done criteria
 
 - Smoke test Gemini pass (response trả về, không có 401/403).
-- Cả 2 track chạy end-to-end trên `po5` không cần manual intervention sau khi set API key.
+- Cả 2 track chạy end-to-end trên `vsf` không cần manual intervention sau khi set API key.
 - JSONL validate theo EvalLog schema (loose subset).
 - Compression ratio và quality delta được report **ít nhất ballpark** cho cả 2 track.
 - Go/no-go recommendation trong worklog cho từng track.
