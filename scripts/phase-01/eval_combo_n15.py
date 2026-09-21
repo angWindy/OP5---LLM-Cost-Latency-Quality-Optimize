@@ -2,10 +2,12 @@
 """
 Phase 1 v3 — Scale combo C (Preselect + Compress) to n=15 cases.
 
-Goal: get statistical signal on correctness (Mistral 8B baseline = ~20% on LongBench-v2
-hard, n=3 is too small). n=15 gives std-error ~10%.
+Goal: get statistical signal on correctness (Mistral 8B baseline = ~20% on hard
+ZeroSCROLLS cases; LongBench-v2 even lower at ~10-25%). n=15 gives std-error ~10%.
 
-Cases: 5 from llmlingua_test5.jsonl (smallest) + 10 from dev_first95.jsonl
+Dataset switch (2026-09-21): zai-org/LongBench-v2 → tau/zero_scrolls.
+
+Cases: 5 from zero_scrolls_test5.jsonl (smallest) + 10 from zero_scrolls_dev95.jsonl
 (context < 400k chars to stay within Mistral 32k context window).
 
 Configs (same as combo 3-case):

@@ -15,7 +15,7 @@ scripts/
 │   ├── eval_llmlingua_v2.py         <- LLMLingua-2 4-config eval on 5 cases
 │   ├── eval_llmlingua_5.py          <- LLMLingua-2 eval on 5 cases (legacy v1)
 │   ├── eval_mistral_baseline_5.py   <- Mistral baseline latency vs Gemini (context scaling)
-│   ├── inspect_dataset.py           <- explore LongBench-v2 schema
+│   ├── inspect_dataset.py           <- explore ZeroSCROLLS schema (default; use --dataset for legacy)
 │   ├── poc_track1.py               <- Track 1 PoC: LLMLingua-2 vs baseline
 │   └── poc_track2.py               <- Track 2 PoC: LongLLMLingua vs baseline
 ├── phase-00/

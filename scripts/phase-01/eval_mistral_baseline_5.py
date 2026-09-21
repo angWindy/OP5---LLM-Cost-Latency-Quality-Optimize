@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-Mistral baseline eval — same 5 LongBench cases as Gemini.
+Mistral baseline eval — same 5 ZeroSCROLLS cases as Gemini.
 Goal: measure context-length scaling of Mistral latency
       (does Mistral have more 'context tax' than Gemini flash-lite?).
+
+Dataset switched (2026-09-21): zai-org/LongBench-v2 → tau/zero_scrolls.
 
 For each of 5 cases (smallest→largest), call Mistral with FULL uncompressed context,
 record:

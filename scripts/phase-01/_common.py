@@ -55,17 +55,37 @@ def now_iso() -> str:
 # ----------------------------------------------------------------------
 # Dataset loaders
 # ----------------------------------------------------------------------
-_LONGVAIL_BENCHV2_PATH = "/tmp/longbench_full.json"
+_ZEROSCROLLS_PATH = "/tmp/zero_scrolls.json"
+
+# Dataset registry — OP5 đã chuyển sang ZeroSCROLLS (2026-09-21) vì:
+#   - LongBench-v2 context trung bình ~120k tokens → accuracy chỉ 25-45%
+#   - ZeroSCROLLS context trung bình ~10k tokens → accuracy kỳ vọng 60-70%
+#   - Multi-domain 10 tasks, có gold answer (F1/EM/Rouge đều đo được)
+#   - Public, không cần HF token, đã được LongLLMLingua paper benchmark
+DATASETS = {
+    "zero_scrolls": "tau/zero_scrolls",
+    "longbench_v2": "zai-org/LongBench-v2",  # legacy, giữ cho tương thích ngược
+}
 
 
-def stream_longbench_v2(split: str = "train"):
+def stream_zero_scrolls(split: str = "test"):
     """
-    Yield rows from LongBench-v2.
-    Tries to load from pre-downloaded file first (/tmp/longbench_full.json),
+    Yield rows from tau/zero_scrolls.
+
+    ZeroSCROLLS gồm 10 tasks: NarrativeQA, Qasper, QuALITY, SpaceDigest, MuSiQue,
+    GovReport, SummScreenFD, QMSum, BookSumSort, TriviaQA. Avg context ~10k tokens.
+
+    Tries to load from pre-downloaded file first (/tmp/zero_scrolls.json),
     then falls back to HuggingFace streaming.
+
+    Schema (per row): {id, pid, passage, question, answer, options, task, ...}
+      - "passage"      : str — long context (~10k tokens)
+      - "question"     : str — câu hỏi
+      - "answer"       : str — gold answer (string ngắn cho QA, list câu cho summary)
+      - "task"         : str — task name (narrative_qa, qasper, ...)
     """
-    p = Path(_LONGVAIL_BENCHV2_PATH)
-    if p.exists() and p.stat().st_size > 500_000_000:
+    p = Path(_ZEROSCROLLS_PATH)
+    if p.exists() and p.stat().st_size > 500_000:
         try:
             with p.open() as f:
                 data = json.load(f)
@@ -77,7 +97,13 @@ def stream_longbench_v2(split: str = "train"):
             print(f"[dataset] Pre-downloaded file failed ({exc}), trying HF...")
 
     from datasets import load_dataset
-    return load_dataset("zai-org/LongBench-v2", split=split, streaming=True)
+    return load_dataset("tau/zero_scrolls", split=split, streaming=True)
+
+
+# Giữ tên cũ làm alias để các script đã viết không cần sửa nhiều
+def stream_longbench_v2(split: str = "test"):
+    """DEPRECATED alias cho stream_zero_scrolls — đổi sang ZeroSCROLLS 2026-09-21."""
+    return stream_zero_scrolls(split=split)
 
 
 def stream_squad_v2(split: str = "train"):
@@ -94,12 +120,20 @@ def stream_squad_v2(split: str = "train"):
 def detect_fields(row: dict) -> dict[str, str]:
     """
     Best-effort mapping from dataset row to canonical fields.
-    Handles LongBench-v2 {context, question, answer, choice} and
-    SQuAD v2 {context, question, answers: [{text}], is_impossible}.
-    """
-    out = {"context": "", "question": "", "answer": "", "choice": ""}
 
-    if "context" in row:
+    Handles:
+      - ZeroSCROLLS {id, passage, question, answer, task, ...}
+      - LongBench-v2 (legacy) {context, question, answer, choice}
+      - SQuAD v2 {context, question, answers: [{text}], is_impossible}
+
+    Trả về canonical {context, question, answer, choice, task} cho mọi schema.
+    """
+    out = {"context": "", "question": "", "answer": "", "choice": "", "task": ""}
+
+    # Context — ZeroSCROLLS dùng "passage", các dataset khác dùng "context"/"input"
+    if "passage" in row:
+        out["context"] = str(row["passage"])
+    elif "context" in row:
         out["context"] = str(row["context"])
     elif "input" in row:
         out["context"] = str(row["input"])
@@ -107,11 +141,20 @@ def detect_fields(row: dict) -> dict[str, str]:
     if "question" in row:
         out["question"] = str(row["question"])
 
-    # SQuAD v2 format: answers=[{text}]
+    # Task name (ZeroSCROLLS có field này)
+    if "task" in row:
+        out["task"] = str(row["task"])
+
+    # Gold answer
     if "answers" in row and isinstance(row["answers"], list) and row["answers"]:
         out["answer"] = str(row["answers"][0].get("text", ""))
     elif "answer" in row:
-        out["answer"] = str(row["answer"])
+        ans = row["answer"]
+        # ZeroSCROLLS summary tasks có answer là list các câu
+        if isinstance(ans, list) and ans:
+            out["answer"] = " ".join(str(x) for x in ans)
+        else:
+            out["answer"] = str(ans)
     elif "output" in row:
         out["answer"] = str(row["output"])
 

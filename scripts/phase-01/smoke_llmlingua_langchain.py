@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Quick test: LangChain + LLMLingua on ~10 LongBench-v2 samples.
+Quick test: LangChain + LLMLingua on ~10 ZeroSCROLLS samples.
 Show before/after context length, compression ratio, and a preview snippet.
+
+Dataset switched from LongBench-v2 → ZeroSCROLLS (2026-09-21) for shorter
+contexts and easier scoring.
 
 Usage (from repo root):
     conda activate vsf
@@ -24,21 +27,23 @@ except ImportError:
     pass
 
 HF_TOKEN = os.getenv("HF_TOKEN", "")
+DEFAULT_DATASET = "tau/zero_scrolls"
+CACHE_PATH = "/tmp/zero_scrolls.json"
 
 
-def load_samples(n: int = 10) -> list[dict]:
-    """Load N samples from cached LongBench-v2 JSON."""
-    cache = Path("/tmp/longbench_full.json")
+def load_samples(n: int = 10, dataset: str = DEFAULT_DATASET) -> list[dict]:
+    """Load N samples from cached ZeroSCROLLS JSON (or HF if cache missing)."""
+    cache = Path(CACHE_PATH)
     if cache.exists():
         with open(cache) as f:
             data = json.load(f)
-        print(f"Loaded {len(data)} rows from cache")
+        print(f"Loaded {len(data)} rows from cache ({cache})")
         return data[:n]
 
     from datasets import load_dataset
 
-    print(f"Downloading {n} rows from HuggingFace...")
-    ds = load_dataset("THUDM/LongBench-v2", split="test", token=HF_TOKEN)
+    print(f"Downloading {n} rows from HuggingFace ({dataset})...")
+    ds = load_dataset(dataset, split="test", token=HF_TOKEN or True)
     return [ds[i] for i in range(min(n, len(ds)))]
 
 
@@ -77,13 +82,14 @@ def main() -> int:
     print("-" * 80)
 
     for i, sample in enumerate(samples):
-        context: str = sample.get("context", "")
+        # ZeroSCROLLS uses "passage"; legacy LongBench-v2 uses "context".
+        context: str = sample.get("passage", "") or sample.get("context", "")
         question: str = sample.get("question", "")
         answer: str = sample.get("answer", "")
 
-        # LongBench-v2 contexts can be >500k chars (~125k tokens).
-        # LLMLingua's xlm-roberta is 512-token max; chunk into ~1500-char pieces
-        # (~375 tokens) so the per-chunk forward pass fits.
+        # ZeroSCROLLS contexts are ~10k tokens (~40k chars); no aggressive
+        # chunking needed but keep the safe cap so LLMLingua's xlm-roberta
+        # 512-token max per chunk is respected.
         CHUNK_CHARS = 1500
         if len(context) > CHUNK_CHARS:
             context_chunks = [context[i : i + CHUNK_CHARS] for i in range(0, len(context), CHUNK_CHARS)]

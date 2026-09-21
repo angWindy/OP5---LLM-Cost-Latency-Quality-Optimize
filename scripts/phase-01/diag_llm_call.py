@@ -3,8 +3,11 @@
 Phase 1 — Diagnostic: detailed breakdown of 1 Gemini LLM call.
 
 Purpose:
-    Profile a single Gemini call with a LongBench-v2 row, breaking down latency
-    into fine-grained components so we can identify bottlenecks.
+    Profile a single Gemini call with a ZeroSCROLLS row (formerly LongBench-v2),
+    breaking down latency into fine-grained components so we can identify
+    bottlenecks.
+
+Dataset switch (2026-09-21): zai-org/LongBench-v2 → tau/zero_scrolls
 
   1. setup_ms        — time to instantiate genai + GenerativeModel (one-shot)
   2. prompt_build_ms — time to assemble the prompt (string ops)
