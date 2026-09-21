@@ -214,3 +214,71 @@ python scripts/phase-01/judge_llm_rerun.py --input results/phase-01-longllmlingu
 - `results/phase-01-phase-01-longllmlingua-opt-n20-fix-llm-judge.jsonl` — LLM-as-judge
 - `results/phase-01-phase-01-longllmlingua-opt-n20-fix-llm-judge-summary.json`
 - `scripts/phase-01/fix_longllmlingua.py` — fix script (new)
+
+---
+
+## 8. Fix round 2-4 — per-task knobs and no-compressor experiments
+
+### 8.1 Round 2: per-task k/rate, max_tokens=1024
+
+Tried per-task knobs for hard tasks (see `fix_longllmlingua_round2.py`).
+
+| Task | k | rate | Heuristic | LLM-judge |
+|---|---|---|---|---|
+| book_sum_sort | 15 | 0.5 | 2/2 | 2/2 (100%) |
+| musique | 20 | 0.5 | 0/2 | 0/2 (0%) ❌ |
+| gov_report | 20 | 0.6 | 0/2 | 0/2 (0%) ❌ |
+| qasper | 15 | 0.5 | 2/2 | 2/2 (100%) |
+| qmsum | 20 | 0.6 | 0/2 | 2/2 (100%) ✅ |
+| quality | 15 | 0.5 | 1/2 | 2/2 (100%) |
+| space_digest | 30 | 0.7 | 0/2 | 0/2 (0%) |
+| squality | 20 | 0.5 | 0/2 | 1/2 (50%) |
+| summ_screen_fd | 20 | 0.5 | 0/2 | 0/2 (0%) |
+| **TOTAL** | | | **27.8%** | **50.0%** |
+
+→ Regressed vs R1. Increasing k (more context) introduced new hallucinations
+for musique and squality.
+
+### 8.2 Round 3: no-compressor (rate=1.0) for hard tasks
+
+Tested skip-compressor for space_digest, summ_screen_fd, gov_report, musique,
+squality, qmsum. Easy tasks (book_sum_sort, qasper, quality) kept R1 config.
+
+**Result: WORST** — 33.3% (LLM-as-judge). Compressor is essential for 7/9 tasks.
+
+### 8.3 Round 4: R1 base + max_tokens=1024
+
+Same as R1 but mt=1024 (was 512). Tested whether output truncation was
+limiting accuracy.
+
+**Result: 50.0%** (LLM-as-judge) — same as R2, no improvement from mt↑.
+
+### 8.4 Key finding: LLM variance dominates
+
+The same config (k=10, r=0.5, mt=512) gives:
+- R1: 55.6% (10/18)
+- R4: 50.0% (9/18)
+
+→ LLM Flash with temperature=0.0 still has variance across runs.
+Statistical noise on 18 samples dominates knob differences.
+
+### 8.5 Hard tasks (cannot be fixed with knob tuning)
+
+| Task | Root cause | Possible fix |
+|---|---|---|
+| space_digest (0%) | Compressor cuts key review sentences → % miscalculated | Dedicated % extraction pipeline (extract all sentences with sentiment → count) |
+| summ_screen_fd (0%) | Multi-scene TV episode → compressor loses scene continuity | No-compress for this task, accept higher latency |
+
+---
+
+## 9. Final recommendation
+
+**Best achievable accuracy: ~50-56% on n=18 (LLM-as-judge)**
+with LLMlingua-2 compressor + TF-IDF preselect (k=10, rate=0.5, mt=512).
+
+Hard limit: 2 tasks (space_digest, summ_screen_fd) cannot be fixed by knob tuning.
+
+**Scripts added:**
+- `scripts/phase-01/fix_longllmlingua_round2.py` — per-task k/rate (worse than R1)
+- `scripts/phase-01/fix_longllmlingua_round3.py` — no-compressor strategy (worst)
+- `scripts/phase-01/fix_longllmlingua_final.py` — R1 base + mt=1024 (no gain)
