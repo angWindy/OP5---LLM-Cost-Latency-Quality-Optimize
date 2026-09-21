@@ -11,6 +11,10 @@ scripts/
 │   ├── smoke_huggingface.py        <- smoke test for HF_TOKEN + dataset access
 │   ├── smoke_llmlingua_langchain.py <- LangChain + LLMLingua smoke test (1 sample)
 │   ├── smoke_gemini.py              <- 1-request smoke test for GOOGLE_API_KEY
+│   ├── smoke_both_paths.py          <- pip-direct vs LangChain compressor paths (multi-model)
+│   ├── eval_llmlingua_v2.py         <- LLMLingua-2 4-config eval on 5 cases
+│   ├── eval_llmlingua_5.py          <- LLMLingua-2 eval on 5 cases (legacy v1)
+│   ├── eval_mistral_baseline_5.py   <- Mistral baseline latency vs Gemini (context scaling)
 │   ├── inspect_dataset.py           <- explore LongBench-v2 schema
 │   ├── poc_track1.py               <- Track 1 PoC: LLMLingua-2 vs baseline
 │   └── poc_track2.py               <- Track 2 PoC: LongLLMLingua vs baseline
@@ -27,12 +31,12 @@ scripts/
 - Scripts write their outputs under `results/<phase>-<descr>.jsonl` or
   `results/<phase>-<descr>/` if there are many files.
 - A script that takes more than 30 seconds should print progress every N records.
-- **Always activate the env first:** `conda activate po5`.
+- **Always activate the env first:** `conda activate vsf`.
 
 ## Example: running the Phase 1 PoC
 
 ```bash
-conda activate po5
+conda activate vsf
 
 # 1) Smoke test the API keys (run all before the full PoC)
 python scripts/phase-01/smoke_huggingface.py          # HF_TOKEN + dataset access
