@@ -6,7 +6,7 @@ Purpose: Confirm HF_TOKEN is set correctly and the dataset is accessible before
 running the full PoC harness. Run BEFORE the PoC scripts to fail fast on auth.
 
 Usage (from repo root):
-    conda activate po5
+    conda activate vsf
     python scripts/phase-01/smoke_huggingface.py
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ except ImportError:
     )
 
 HF_TOKEN = os.getenv("HF_TOKEN", "")
-HF_DATASET = "THUDM/LongBench-v2"
+HF_DATASET = "zai-org/LongBench-v2"
 
 
 def main() -> int:
@@ -65,9 +65,9 @@ def main() -> int:
     try:
         info = api.dataset_info(repo_id=HF_DATASET, token=HF_TOKEN)
         print(f"Dataset: {info.id}")
-        print(f"  Files: {[s.path for s in info.siblings]}")
+        print(f"  Files: {[s.rfilename for s in info.siblings][:10]}")
         print(f"  Gated: {info.gated}")
-    except Exception as exc:
+    except AttributeError as exc:
         print(f"ERROR: Khong truy cap duoc dataset '{HF_DATASET}': {exc}", file=sys.stderr)
         return 5
 

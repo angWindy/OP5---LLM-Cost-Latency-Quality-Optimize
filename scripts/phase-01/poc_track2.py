@@ -9,7 +9,7 @@ LongLLMLingua preserves passages relevant to the query -> mitigates "lost in the
 and matches lever C in the master plan for Track 2.
 
 Usage (from repo root):
-    conda activate po5
+    conda activate vsf
     python scripts/phase-01/poc_track2.py --n 15
 """
 from __future__ import annotations

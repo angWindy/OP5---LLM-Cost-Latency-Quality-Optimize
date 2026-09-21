@@ -3,7 +3,7 @@
 > **Phase:** [phase-01-llmlingua-poc.md](../phases/phase-01-llmlingua-poc.md)
 > **Status when started:** active (scripts scaffolded)
 > **Author:** —
-> **Env:** conda `po5` (Python 3.11)
+> **Env:** conda `vsf` (Python 3.11)
 
 ## Today (bản update)
 
@@ -21,7 +21,7 @@
 ## Pipeline chạy (end-to-end)
 
 ```bash
-conda activate po5
+conda activate vsf
 pip install -r scripts/phase-01/requirements.txt
 echo "GOOGLE_API_KEY=your-key" >> .env
 

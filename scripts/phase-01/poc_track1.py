@@ -6,7 +6,7 @@ Paired run: for each of N cases from LongBench-v2, run baseline (full prompt) an
 compressed (LLMLingua-2 via LangChain) → Gemini, log to JSONL.
 
 Usage (from repo root):
-    conda activate po5
+    conda activate vsf
     python scripts/phase-01/poc_track1.py --n 15
 """
 from __future__ import annotations

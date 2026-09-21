@@ -13,7 +13,7 @@ Before any experiment runs, we need:
 3. A **deterministic router** (rule-based) for both tracks — per the OP5 brief, learned
    routing comes *after* the deterministic one is stable.
 4. A `promptfoo` entry point that writes JSONL ready for our paired analysis.
-5. The conda env `po5` is usable end-to-end.
+5. The conda env `vsf` is usable end-to-end.
 
 Without these, every experiment downstream is incomparable.
 
@@ -27,7 +27,7 @@ Without these, every experiment downstream is incomparable.
   function `route(track, input_features) -> model_id` — no LLM involved.
 - Stand up a `promptfoo` config with one trivial provider and one dummy case, confirm
   JSONL output matches the schema.
-- Sanity-check `conda activate po5 && python -c "import langchain, promptfoo, pandas, plotly"`.
+- Sanity-check `conda activate vsf && python -c "import langchain, promptfoo, pandas, plotly"`.
 
 ## Scope (out)
 
@@ -46,7 +46,7 @@ Without these, every experiment downstream is incomparable.
 
 ## Done criteria
 
-- `promptfoo eval -c configs/promptfoo/smoke-test.yaml` runs to completion on `po5`.
+- `promptfoo eval -c configs/promptfoo/smoke-test.yaml` runs to completion on `vsf`.
 - `results/smoke-test.jsonl` validates against `eval_log.json` (use `jsonschema` CLI).
 - The 3 schema files have at least one example each.
 - The router returns deterministic output for 10 hand-crafted features.

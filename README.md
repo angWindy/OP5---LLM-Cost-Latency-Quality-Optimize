@@ -43,7 +43,7 @@ OP5/
 
 ## Conventions
 
-- **Environment:** conda env `po5` (Python 3.11). Activate with `conda activate po5` before
+- **Environment:** conda env `vsf` (Python 3.11). Activate with `conda activate vsf` before
   running anything.
 - **LLM API for demos:** Gemini (Google AI Studio) — see `doc/phases/phase-01-llmlingua-poc.md`
   for API key setup.

@@ -17,7 +17,7 @@ src/
 
 ## Conventions
 
-- Python 3.11, conda env `po5`.
+- Python 3.11, conda env `vsf`.
 - Type hints everywhere. `from __future__ import annotations`.
 - Public functions get docstrings with input/output examples.
 - No top-level side effects. Importing `op5` should not call any API.
@@ -27,7 +27,7 @@ src/
 From the repo root:
 
 ```bash
-conda activate po5
+conda activate vsf
 pip install -e .
 ```
 
