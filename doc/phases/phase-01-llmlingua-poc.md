@@ -20,7 +20,7 @@ Phase 1 này có **2 track song song**, mỗi track test một biến thể comp
 We want to know:
 
 1. Cài đặt được cả 2 compressor trong `vsf` env không?
-2. Từng compressor có shrink được prompt LongBench-v2 trong khi giữ đủ thông tin
+2. Từng compressor có shrink được prompt ZeroSCROLLS trong khi giữ đủ thông tin
    để Gemini trả lời đúng không?
 3. **Compression ratio vs answer-quality delta** cho từng track.
 4. Latency overhead của bước nén.
@@ -34,7 +34,7 @@ This is **scoping**, not a full experiment. Không có claim statistical signifi
 
 Ngoài 2 track chính, session 2026-09-21 đã thử thêm **Approach C** —
 kết hợp **RAG preselect** (SentenceTransformer) + **LLMLingua-2 compress**
-trên 1 case LongBench-v2.
+trên 1 case ZeroSCROLLS.
 
 ### "Preselect + Compress" là gì?
 
@@ -105,8 +105,10 @@ Xem chi tiết tại [`doc/worklog/2026-09-21-3-approach-1case.md`](../worklog/2
 - Cài đặt: `langchain`, `langchain-community` (cho `LLMLinguaCompressor`),
   `google-generativeai`, `datasets`, `python-dotenv`, `jsonschema`.
 - **Trước tiên**: chạy 1 request Gemini cơ bản để xác nhận API key hoạt động.
-- Dataset: **`zai-org/LongBench-v2`** — multi-task long-context benchmark.
-  Stream first 30 rows.
+- Dataset: **`tau/zero_scrolls`** — multi-domain 10-task long-context benchmark.
+  - Switched từ `zai-org/LongBench-v2` ngày 2026-09-21 (xem `2026-09-21-dataset-switch-zero-scrolls.md`).
+  - Public trên HF, không cần token, đã được LongLLMLingua paper benchmark.
+  - Stream first 30 rows.
 - Model: **`gemini-3.5-flash-lite`**.
 - Log JSONL theo EvalLog-style fields: `case_id`, `track`, `config`, `input_tokens`,
   `output_tokens`, `compression_ratio`, `answer_text`, `latency_ms`, `compressor`, `gemini_latency_ms`.
@@ -140,7 +142,7 @@ Xem chi tiết tại [`doc/worklog/2026-09-21-3-approach-1case.md`](../worklog/2
 | Compressor (Track 1) | **LLMLingua-2** | Task-agnostic, nhanh hơn 3-6× so với LLMLingua gốc, không cần câu hỏi |
 | Compressor (Track 2) | **LongLLMLingua** | Nén theo câu hỏi, giảm "lost in the middle" |
 | Wrapper | LangChain (`LLMLinguaCompressor`) | One-line integration, plug vào RAG chain dễ |
-| Dataset | `zai-org/LongBench-v2` | Long-context benchmark, multi-task, phù hợp Track 1 + Track 2 |
+| Dataset | `tau/zero_scrolls` (ZeroSCROLLS) | Multi-domain 10 tasks, avg ~10k tokens context, có gold answer, public HF, đã được paper benchmark |
 | Model | `gemini-3.5-flash-lite` | Rẻ, nhanh, free tier đủ |
 
 ## Environment
@@ -160,12 +162,12 @@ hoặc `os.environ`. **Không commit key.**
 | `scripts/phase-01/smoke_gemini.py` | **1 request Gemini cơ bản** — verify API key hoạt động |
 | `scripts/phase-01/poc_track1.py` | Track 1 PoC: LLMLingua-2 vs baseline |
 | `scripts/phase-01/poc_track2.py` | Track 2 PoC: LongLLMLingua vs baseline |
-| `scripts/phase-01/inspect_dataset.py` | Explore LongBench-v2 structure (stream 3 rows) |
+| `scripts/phase-01/inspect_dataset.py` | Explore ZeroSCROLLS structure (stream 3 rows) |
 
 ## Deliverables
 
 - [ ] `smoke_gemini.py` chạy được, in ra response từ `gemini-3.5-flash-lite`.
-- [ ] `inspect_dataset.py` in ra cấu trúc 3 rows đầu của LongBench-v2.
+- [ ] `inspect_dataset.py` in ra cấu trúc 3 rows đầu của ZeroSCROLLS.
 - [ ] `vsf` env có `langchain` + `LLMLinguaCompressor`.
 - [ ] `poc_track1.py` chạy paired (baseline vs LLMLingua-2) trên ~15 case → `results/phase-01-track1-poc.jsonl`.
 - [ ] `poc_track2.py` chạy paired (baseline vs LongLLMLingua) trên ~15 case → `results/phase-01-track2-poc.jsonl`.
@@ -186,10 +188,10 @@ hoặc `os.environ`. **Không commit key.**
   `~/.cache/huggingface/` (đã trong `.gitignore`).
 - **R2.** Gemini free-tier rate limit. Mitigation: dùng `gemini-3.5-flash-lite`,
   sleep giữa các call nếu cần.
-- **R3.** LongBench-v2 có thể yêu cầu HF token. Mitigation: thử `use_auth_token=False`
-  trước, fallback sang dataset public khác nếu fail.
-- **R4.** LongBench-v2 là long-context → cần chunking cho compressor. Mitigation:
-  test 1-2 example trước khi chạy full.
+- **R3.** ZeroSCROLLS là public trên HF, không cần token. Legacy LongBench-v2 thì
+  tùy trường hợp — thử `use_auth_token=False` trước, fallback sang ZeroSCROLLS (mặc định).
+- **R4.** ZeroSCROLLS context ~10k tokens — vừa đủ để test compressor ở tỉ lệ nén
+  2-5× mà không bị OOM. Long-context hơn thì dùng LooGLE / MuSiQue.
 - **R5.** `gemini-3.5-flash-lite` là model mới — verify availability trước (smoke test).
 
 ## Reference
@@ -198,5 +200,6 @@ hoặc `os.environ`. **Không commit key.**
 - LLMLingua repo: https://github.com/microsoft/LLMLingua
 - LLMLingua-2 paper: https://arxiv.org/abs/2403.12957
 - LongLLMLingua paper: https://arxiv.org/abs/2310.06839
-- LongBench-v2 dataset: https://huggingface.co/datasets/zai-org/LongBench-v2
+- ZeroSCROLLS dataset: https://huggingface.co/datasets/tau/zero_scrolls
+- (Legacy) LongBench-v2 dataset: https://huggingface.co/datasets/zai-org/LongBench-v2
 - LangChain LLMLinguaCompressor: https://python.langchain.com/docs/integrations/document_transformers/llmlingua

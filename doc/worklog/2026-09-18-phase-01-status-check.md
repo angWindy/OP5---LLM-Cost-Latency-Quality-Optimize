@@ -5,6 +5,9 @@
 > **Author:** —
 > **Env (resolved):** conda `vsf` (Python 3.11.16). Project docs/script docstrings
 > were updated today to match.
+> **Note (2026-09-21):** dataset `zai-org/LongBench-v2` đã được thay bằng
+> `tau/zero_scrolls`. Các tham chiếu `LongBench-v2` dưới đây là **legacy**.
+> Xem [`2026-09-21-dataset-switch-zero-scrolls.md`](2026-09-21-dataset-switch-zero-scrolls.md).
 
 ## What this session actually did
 

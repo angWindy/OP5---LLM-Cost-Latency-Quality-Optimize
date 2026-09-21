@@ -5,6 +5,9 @@
 > **Status after this session:** active, with **explicit DROP recommendation** for LLMLingua-2 (both paths)
 > **Author:** —
 > **Env:** conda `vsf` (Python 3.11.16)
+> **Note (2026-09-21):** dataset `zai-org/LongBench-v2` đã được thay bằng
+> `tau/zero_scrolls`. Các tham chiếu `LongBench-v2` dưới đây là **legacy**.
+> Xem [`2026-09-21-dataset-switch-zero-scrolls.md`](2026-09-21-dataset-switch-zero-scrolls.md).
 
 ## What this session did
 
