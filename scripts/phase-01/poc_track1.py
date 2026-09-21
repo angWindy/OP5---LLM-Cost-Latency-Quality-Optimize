@@ -2,8 +2,13 @@
 """
 Phase 1 — Track 1 PoC: LLMLingua-2 vs baseline on Gemini.
 
-Paired run: for each of N cases from LongBench-v2, run baseline (full prompt) and
-compressed (LLMLingua-2 via LangChain) → Gemini, log to JSONL.
+Paired run: for each of N cases from ZeroSCROLLS (formerly LongBench-v2), run baseline
+(full prompt) and compressed (LLMLingua-2 via LangChain) → Gemini, log to JSONL.
+
+Dataset switch (2026-09-21): zai-org/LongBench-v2 → tau/zero_scrolls
+  - ZeroSCROLLS shorter context (~10k tokens) → signal stronger
+  - Multi-domain 10 tasks (vs 1 MCQ in LongBench-v2)
+  - Gold answers chuẩn F1/EM/Rouge
 
 Usage (from repo root):
     conda activate vsf
@@ -92,7 +97,7 @@ def main() -> int:
         print(f"FATAL: Khong load duoc compressor: {exc}", file=sys.stderr)
         return 2
 
-    print(f"Streaming LongBench-v2...")
+    print(f"Streaming ZeroSCROLLS (formerly aliased as stream_longbench_v2)...")
     rows_done = 0
     records_written = 0
     with args.out.open("w", encoding="utf-8") as fh:

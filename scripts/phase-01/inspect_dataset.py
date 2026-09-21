@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """
-Inspect LongBench-v2 dataset structure.
+Inspect ZeroSCROLLS (tau/zero_scrolls) dataset structure.
 
 Stream first N rows (default 3) to understand the schema: which fields contain the
 passage, the question, the answer, the task type, etc. We need this BEFORE writing
 the PoC harness.
 
+Default dataset switched from LongBench-v2 → ZeroSCROLLS (2026-09-21) because
+ZeroSCROLLS has shorter context (~10k tokens) and gold answers that are easier to
+score deterministically.
+
 Usage (from repo root):
     conda activate vsf
-    python scripts/phase-01/inspect_dataset.py --n 3
+    python scripts/phase-01/inspect_dataset.py --n 3 [--dataset zero_scrolls]
 """
 from __future__ import annotations
 
@@ -23,17 +27,29 @@ try:
 except ImportError:
     pass
 
-DATASET_NAME = "zai-org/LongBench-v2"
+# Dataset registry (keep in sync with _common.DATASETS)
+DATASET_REGISTRY = {
+    "zero_scrolls": "tau/zero_scrolls",
+    "longbench_v2": "zai-org/LongBench-v2",
+}
+DEFAULT_DATASET = "zero_scrolls"
 DEFAULT_N = 3
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Inspect LongBench-v2 dataset")
+    parser = argparse.ArgumentParser(
+        description="Inspect dataset structure (ZeroSCROLLS default)"
+    )
+    parser.add_argument("--dataset", type=str, default=DEFAULT_DATASET,
+                        choices=list(DATASET_REGISTRY.keys()),
+                        help=f"Dataset key (default {DEFAULT_DATASET})")
     parser.add_argument("--n", type=int, default=DEFAULT_N,
                         help=f"Number of rows to inspect (default {DEFAULT_N})")
-    parser.add_argument("--split", type=str, default="train",
-                        help="Dataset split (default 'train')")
+    parser.add_argument("--split", type=str, default="test",
+                        help="Dataset split (default 'test')")
     args = parser.parse_args()
+
+    dataset_name = DATASET_REGISTRY[args.dataset]
 
     try:
         from datasets import load_dataset
@@ -41,13 +57,13 @@ def main() -> int:
         print("ERROR: datasets chua duoc cai. pip install datasets", file=sys.stderr)
         return 3
 
-    print(f"Loading dataset: {DATASET_NAME}")
+    print(f"Loading dataset: {args.dataset}  ({dataset_name})")
     print(f"  split:  {args.split}")
     print(f"  n:      {args.n}")
     print("---")
 
     try:
-        ds = load_dataset(DATASET_NAME, split=args.split, streaming=True)
+        ds = load_dataset(dataset_name, split=args.split, streaming=True)
     except Exception as exc:
         print(f"ERROR: Khong load duoc dataset: {exc}", file=sys.stderr)
         return 4
@@ -72,7 +88,7 @@ def main() -> int:
     print("---")
 
     print(f"Streaming next {args.n - 1} rows to check schema stability...")
-    ds_iter = iter(load_dataset(DATASET_NAME, split=args.split, streaming=True))
+    ds_iter = iter(load_dataset(dataset_name, split=args.split, streaming=True))
     next(ds_iter, None)
     for i in range(args.n - 1):
         try:
