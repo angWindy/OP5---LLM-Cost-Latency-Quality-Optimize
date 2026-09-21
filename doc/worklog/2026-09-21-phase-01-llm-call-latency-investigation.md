@@ -5,6 +5,8 @@
 > **Trạng thái:** active
 > **Script điều tra:** `scripts/phase-01/diag_llm_call.py`
 > **Output thô:** `results/phase-01-llm-call-diagnostic.json`
+> **Note:** Dataset tham chiếu trong worklog này là `LongBench-v2` (legacy, đã chuyển
+> sang `tau/zero_scrolls`). Xem [`2026-09-21-dataset-switch-zero-scrolls.md`](2026-09-21-dataset-switch-zero-scrolls.md).
 
 ## 1. Mục tiêu
 

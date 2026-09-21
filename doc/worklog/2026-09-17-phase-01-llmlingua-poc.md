@@ -4,6 +4,11 @@
 > **Status when started:** active (scripts scaffolded)
 > **Author:** —
 > **Env:** conda `vsf` (Python 3.11)
+> **Note (2026-09-21):** dataset `zai-org/LongBench-v2` đã được thay bằng
+> `tau/zero_scrolls` (ZeroSCROLLS). Xem
+> [`2026-09-21-dataset-switch-zero-scrolls.md`](2026-09-21-dataset-switch-zero-scrolls.md).
+> Worklog này giữ nguyên vì nó phản ánh lịch sử; các tham chiếu `LongBench-v2` dưới
+> đây là **legacy**.
 
 ## Today (bản update)
 
