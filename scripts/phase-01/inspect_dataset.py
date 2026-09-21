@@ -2,9 +2,9 @@
 """
 Inspect ZeroSCROLLS (tau/zero_scrolls) dataset structure.
 
-Stream first N rows (default 3) to understand the schema: which fields contain the
-passage, the question, the answer, the task type, etc. We need this BEFORE writing
-the PoC harness.
+ZeroSCROLLS không load được qua `datasets.load_dataset` (loading script bị
+deprecate). Script này tải và extract các task zips từ HF về `/tmp/zero_scrolls/`,
+sau đó đọc 3 rows đầu từ `test.jsonl` của task mặc định (`qasper` — nhỏ nhất).
 
 Default dataset switched from LongBench-v2 → ZeroSCROLLS (2026-09-21) because
 ZeroSCROLLS has shorter context (~10k tokens) and gold answers that are easier to
@@ -12,7 +12,7 @@ score deterministically.
 
 Usage (from repo root):
     conda activate vsf
-    python scripts/phase-01/inspect_dataset.py --n 3 [--dataset zero_scrolls]
+    python scripts/phase-01/inspect_dataset.py [--task qasper]
 """
 from __future__ import annotations
 
@@ -27,56 +27,78 @@ try:
 except ImportError:
     pass
 
-# Dataset registry (keep in sync with _common.DATASETS)
-DATASET_REGISTRY = {
-    "zero_scrolls": "tau/zero_scrolls",
-    "longbench_v2": "zai-org/LongBench-v2",
-}
-DEFAULT_DATASET = "zero_scrolls"
-DEFAULT_N = 3
+# Default task = qasper (nhỏ nhất, 0.3 MB).
+DEFAULT_TASK = "qasper"
+CACHE_DIR = Path("/tmp/zero_scrolls")
+
+
+def _ensure_cached(task: str) -> Path:
+    """Make sure <cache>/<task>/test.jsonl exists. Download nếu thiếu."""
+    import zipfile
+    import requests
+
+    out_dir = CACHE_DIR
+    jsonl_path = out_dir / task / "test.jsonl"
+    if jsonl_path.exists() and jsonl_path.stat().st_size > 0:
+        return jsonl_path
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = out_dir / f"{task}.zip"
+    url = f"https://huggingface.co/datasets/tau/zero_scrolls/resolve/main/{task}.zip"
+    print(f"Downloading {task} from HF...")
+    r = requests.get(url, stream=True, timeout=120)
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}")
+    with open(zip_path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=1024 * 256):
+            f.write(chunk)
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(out_dir)
+    finally:
+        if zip_path.exists():
+            zip_path.unlink()
+    if not jsonl_path.exists():
+        raise RuntimeError(f"{task}/test.jsonl not found after extract")
+    return jsonl_path
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Inspect dataset structure (ZeroSCROLLS default)"
     )
-    parser.add_argument("--dataset", type=str, default=DEFAULT_DATASET,
-                        choices=list(DATASET_REGISTRY.keys()),
-                        help=f"Dataset key (default {DEFAULT_DATASET})")
-    parser.add_argument("--n", type=int, default=DEFAULT_N,
-                        help=f"Number of rows to inspect (default {DEFAULT_N})")
-    parser.add_argument("--split", type=str, default="test",
-                        help="Dataset split (default 'test')")
+    parser.add_argument("--task", type=str, default=DEFAULT_TASK,
+                        help=f"ZeroSCROLLS task name (default {DEFAULT_TASK})")
+    parser.add_argument("--n", type=int, default=3,
+                        help="Number of rows to inspect (default 3)")
     args = parser.parse_args()
 
-    dataset_name = DATASET_REGISTRY[args.dataset]
-
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        print("ERROR: datasets chua duoc cai. pip install datasets", file=sys.stderr)
-        return 3
-
-    print(f"Loading dataset: {args.dataset}  ({dataset_name})")
-    print(f"  split:  {args.split}")
-    print(f"  n:      {args.n}")
+    print(f"Loading ZeroSCROLLS task: {args.task}")
+    print(f"  n:  {args.n}")
     print("---")
 
     try:
-        ds = load_dataset(dataset_name, split=args.split, streaming=True)
+        jsonl_path = _ensure_cached(args.task)
     except Exception as exc:
-        print(f"ERROR: Khong load duoc dataset: {exc}", file=sys.stderr)
+        print(f"ERROR: Khong download duoc task: {exc}", file=sys.stderr)
         return 4
 
     try:
-        first_row = next(iter(ds))
-    except StopIteration:
-        print("ERROR: Dataset rong.", file=sys.stderr)
-        return 5
+        with open(jsonl_path) as f:
+            rows: list[dict] = []
+            for i, line in enumerate(f):
+                rows.append(json.loads(line))
+                if i + 1 >= args.n:
+                    break
     except Exception as exc:
-        print(f"ERROR: Khong doc duoc row dau: {exc}", file=sys.stderr)
+        print(f"ERROR: Khong doc duoc row: {exc}", file=sys.stderr)
         return 6
 
+    if not rows:
+        print("ERROR: Dataset rong.", file=sys.stderr)
+        return 5
+
+    first_row = rows[0]
     print("First row (field summary):")
     for key, value in first_row.items():
         preview = repr(value)[:150]
@@ -87,20 +109,13 @@ def main() -> int:
     print(json.dumps(_summarize_row(first_row), indent=2, ensure_ascii=False, default=str))
     print("---")
 
-    print(f"Streaming next {args.n - 1} rows to check schema stability...")
-    ds_iter = iter(load_dataset(dataset_name, split=args.split, streaming=True))
-    next(ds_iter, None)
-    for i in range(args.n - 1):
-        try:
-            row = next(ds_iter)
-        except StopIteration:
-            print(f"  (het sau {i} rows)")
-            break
+    print(f"Inspecting {len(rows)} rows for schema stability...")
+    for i, row in enumerate(rows[1:], start=2):
         keys_match = set(row.keys()) == set(first_row.keys())
-        print(f"  Row {i+2}: keys_match={keys_match} | num_fields={len(row)}")
+        print(f"  Row {i}: keys_match={keys_match} | num_fields={len(row)}")
 
     print("---")
-    print("OK Inspect done. Note field names de dung trong poc_track1/track2.")
+    print("OK Inspect done.")
     return 0
 
 
