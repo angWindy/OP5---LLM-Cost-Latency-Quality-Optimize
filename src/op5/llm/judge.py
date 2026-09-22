@@ -31,33 +31,9 @@ from typing import Literal
 import requests
 
 # ---------------------------------------------------------------
-# Shared prompt template
+# Shared prompt template (canonical, lives in judge_prompt.py)
 # ---------------------------------------------------------------
-JUDGE_PROMPT = """You are an expert evaluator. Judge whether the system's answer is correct.
-
-RULES (mandatory):
-- Output JSON only — no explanation before or after
-- JSON must have exactly 3 keys: verdict, reason, confidence
-
-Evaluation criteria:
-- "correct": answer starts with correct info from ground truth, or is semantically
-  equivalent (e.g. "Poland" = "Ba Lan", "70%" = "70 percent")
-- "ambiguous": possibly correct but uncertain (confidence < 0.7)
-- "incorrect": main information is wrong or contradicts ground truth
-
-Input:
----
-Context: {context}
-Question: {question}
-Ground truth: {gold}
-Prediction: {pred}
----
-
-Respond in the same language as the input. If the question/context is in Vietnamese,
-respond in Vietnamese. Otherwise respond in English.
-
-JSON (no explanation):
-{{"verdict": "correct"|"incorrect"|"ambiguous", "reason": "1-2 sentences", "confidence": 0.0-1.0}}"""
+from op5.llm.judge_prompt import JUDGE_PROMPT_TEMPLATE as JUDGE_PROMPT  # re-export for backward compat
 
 @dataclass
 class JudgeResult:
@@ -128,7 +104,7 @@ def load_chain(config_path: Path | None = None) -> list[dict]:
 # Gemini REST call
 # ---------------------------------------------------------------
 def _call_gemini(model, prompt, api_key, temperature=0.1, max_tokens=800, timeout=60) -> str:
-    url = f"https://generativeai.googleapis.com/v1beta1/models/{model}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},

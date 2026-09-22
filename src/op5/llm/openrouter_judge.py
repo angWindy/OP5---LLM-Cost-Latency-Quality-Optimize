@@ -44,32 +44,8 @@ import requests
 # ---------------------------------------------------------------
 # Judge prompt template
 # ---------------------------------------------------------------
-JUDGE_PROMPT_TEMPLATE = """You are an expert evaluator. Judge whether the system's answer is correct.
-
-RULES (mandatory):
-- Output JSON only — no explanation before or after
-- Do NOT write "The user wants me to..." or any non-JSON text
-- JSON must have exactly 3 keys: verdict, reason, confidence
-
-Evaluation criteria:
-- "correct": answer starts with correct information from ground truth, or is semantically
-  equivalent (e.g., "Poland" = "Ba Lan", "70%" = "70 percent")
-- "ambiguous": possibly correct but uncertain (confidence < 0.7)
-- "incorrect": main information is wrong or contradicts ground truth
-
-Input:
----
-Context: {context}
-Question: {question}
-Ground truth: {gold}
-Prediction: {pred}
----
-
-Respond in the same language as the input. If the question/context is in Vietnamese,
-respond in Vietnamese. Otherwise respond in English.
-
-JSON (no explanation):
-{{"verdict": "correct"|"incorrect"|"ambiguous", "reason": "1-2 sentences", "confidence": 0.0-1.0}}"""
+# Canonical judge prompt — single source of truth in op5.llm.judge_prompt
+from op5.llm.judge_prompt import JUDGE_PROMPT_TEMPLATE  # re-export for backward compat
 
 # ---------------------------------------------------------------
 # Fallback model chain (tiered: strongest free → weakest free)
