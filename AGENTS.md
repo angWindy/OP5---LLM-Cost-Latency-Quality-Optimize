@@ -26,11 +26,22 @@
 
 ## Language rules
 
+> **Strict English policy for everything outside `doc/`.** Em đã xác nhận lại
+> với user: ngoại trừ tài liệu trong `doc/` (giữ Tiếng Việt theo lịch sử), tất cả
+> file khác — code, docstrings, comments, error messages, log strings, system
+> prompts, README — **đều phải Tiếng Anh**.
+
 - **Code** (classes, functions, variables, comments, docstrings): English only.
 - **Documentation & guides** (README, doc/, worklog/): keep existing language (Tiếng Việt).
 - **User-facing prompts / system messages for LLM calls**: English, but model should
   respond in the same language as the input context. Example: a prompt in English
-  asking about a Vietnamese document → model responds in Vietnamese.
+  asking about a Vietnamese document → model responds in Vietnamese. The example
+  values inside English prompts should also be in English (e.g. `"70%" = "70 percent"`,
+  not `"70%" = "70 phần trăm"`).
+- **Error messages & logs**: English. No Vietnamese strings raised by Python or
+  printed to stdout/stderr — they break grep for ops monitoring.
+- **YAML / TOML / config files** (e.g. `profiles/*.yaml`): comments and field
+  values in English.
 
 ## What NOT to do
 
