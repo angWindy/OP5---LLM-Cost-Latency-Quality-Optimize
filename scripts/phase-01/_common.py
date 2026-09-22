@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 load_dotenv(REPO_ROOT / ".env")
+from _prompts import (
+    format_eval_prompt as _format_eval_prompt,  # canonical Track 2 prompt
+    _format_gemini_judge_prompt,  # canonical Gemini-direct judge prompt
+)
 
 
 def get_gemini_model(model_name: str | None = None):
@@ -20,7 +26,7 @@ def get_gemini_model(model_name: str | None = None):
     import google.generativeai as genai
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY chua duoc set trong .env")
+        raise RuntimeError("GOOGLE_API_KEY not set in .env")
     genai.configure(api_key=api_key)
     return genai.GenerativeModel(model_name or os.getenv("OP5_GEMINI_MODEL", "gemini-3.5-flash-lite"))
 
@@ -57,58 +63,58 @@ def now_iso() -> str:
 # ----------------------------------------------------------------------
 _ZEROSCROLLS_CACHE = Path("/tmp/zero_scrolls")
 
-# Dataset registry — OP5 đã chuyển sang ZeroSCROLLS (2026-09-21) vì:
-#   - LongBench-v2 context trung bình ~120k tokens → accuracy chỉ 25-45%
-#   - ZeroSCROLLS context trung bình ~10k tokens → accuracy kỳ vọng 60-70%
-#   - Multi-domain 10 tasks, có gold answer (F1/EM/Rouge đều đo được)
-#   - Public, không cần HF token, đã được LongLLMLingua paper benchmark
+# Dataset registry — OP5 switched to ZeroSCROLLS on 2026-09-21 because:
+#   - LongBench-v2 context averages ~120k tokens → accuracy only 25-45%
+#   - ZeroSCROLLS context averages ~10k tokens → expected accuracy 60-70%
+#   - Multi-domain 10 tasks, gold answers available (F1/EM/Rouge all measurable)
+#   - Public, no HF token needed, benchmarked by LongLLMLingua paper
 DATASETS = {
     "zero_scrolls": "tau/zero_scrolls",
-    "longbench_v2": "zai-org/LongBench-v2",  # legacy, giữ cho tương thích ngược
+    "longbench_v2": "zai-org/LongBench-v2",  # legacy, kept for backward compat
 }
 
-# Schema thật của ZeroSCROLLS (sau khi inspect thực tế 2026-09-21):
+# Actual schema of ZeroSCROLLS (verified 2026-09-21):
 #
 #   {
-#     "id": str,                          # unique row id (vd "2hop__546800_262512")
-#     "pid": str,                         # passage id (group nhiều instance của 1 passage)
+#     "id": str,                          # unique row id (e.g. "2hop__546800_262512")
+#     "pid": str,                         # passage id (groups multiple instances)
 #     "input": str,                       # prompt + document + separator + question + postfix
-#     "output": str,                      # gold answer (string, không phải list)
-#     "document_start_index": int,        # chars offset của document trong input
-#     "document_end_index":   int,        # chars offset end
-#     "query_start_index":    int,        # chars offset của question
+#     "output": str,                      # gold answer (string, not list)
+#     "document_start_index": int,        # char offset of document in input
+#     "document_end_index":   int,        # char offset end
+#     "query_start_index":    int,        # char offset of question
 #     "query_end_index":      int,
-#     "truncation_seperator": str,        # "[typo: separator]" marker cho truncation
+#     "truncation_seperator": str,        # marker for truncation
 #     "inner_docs_start_indices": list    # (multi-hop: musique, space_digest, book_sum_sort)
 #   }
 #
-# → context = input[document_start_index:document_end_index]
+# → context  = input[document_start_index:document_end_index]
 # → question = input[query_start_index:query_end_index]
-# → answer = output
-# → task name lấy từ zip filename (qasper, musique, gov_report, ...)
+# → answer   = output
+# → task name comes from the zip filename (qasper, musique, gov_report, ...)
 
-# 10 tasks của ZeroSCROLLS. narrative_qa BỊ LOẠI khỏi default vì context
-# quá lớn (~315k chars / ~80k tokens), lớn hơn cả LongBench-v2 và làm hỏng
-# mục tiêu "context ngắn để test compressor hiệu quả".
+# 10 tasks of ZeroSCROLLS. narrative_qa is EXCLUDED from default because its
+# context is too large (~315k chars / ~80k tokens), larger than LongBench-v2
+# itself, defeating the goal of "short context to test compressor effectiveness".
 ZERO_SCROLLS_TASKS = [
-    "qasper",           # QA trên NLP papers, ~23k chars
+    "qasper",           # QA on NLP papers, ~23k chars
     "musique",          # Multi-hop QA, ~10k chars
     "gov_report",       # Long summary, ~49k chars
     "space_digest",     # Sentiment aggregation, ~30k chars
     "summ_screen_fd",   # TV transcript summary, ~31k chars
     "qmsum",            # Meeting summary, ~58k chars
     "squality",         # Question-focused summary, ~29k chars
-    "quality",          # MCQ trên long passage, ~25k chars
+    "quality",          # MCQ on long passage, ~25k chars
     "book_sum_sort",    # Sort chapter summaries, ~39k chars
 ]
 ZERO_SCROLLS_TASKS_ALL = ZERO_SCROLLS_TASKS + ["narrative_qa"]  # full set
 
 
 def _download_zero_scrolls_task(task: str, cache_dir: Path) -> Path:
-    """Download một task `.zip` từ HF và extract vào cache_dir.
+    """Download one task `.zip` from HF and extract into cache_dir.
 
-    Returns path đến `<cache_dir>/<task>/<split>.jsonl`.
-    Idempotent — nếu đã download thì skip.
+    Returns path to `<cache_dir>/<task>/<split>.jsonl`.
+    Idempotent — skip if already downloaded.
     """
     import requests
 
@@ -155,22 +161,22 @@ def stream_zero_scrolls(split: str = "test", tasks: list[str] | None = None,
     """
     Yield rows from tau/zero_scrolls (multi-task: qasper, musique, gov_report, ...).
 
-    Schema mỗi row (đã được normalized qua detect_fields):
+    Per-row schema (normalized via detect_fields):
         {
             "id": str,
             "pid": str,
-            "task": str,           # thêm: tên task
-            "context": str,        # extract từ input[document_start:end]
-            "question": str,       # extract từ input[query_start:end]
+            "task": str,           # added: task name
+            "context": str,        # extracted from input[document_start:end]
+            "question": str,       # extracted from input[query_start:end]
             "answer": str,         # gold = output
-            "_raw": dict           # original row (giữ để debug)
+            "_raw": dict           # original row (kept for debugging)
         }
 
     Args:
-        split: 'test' (default) hoặc 'validation'
-        tasks: subset của ZERO_SCROLLS_TASKS. None → default 9 tasks
-               (bỏ narrative_qa quá lớn).
-        cache_dir: nơi download/extract. Default `/tmp/zero_scrolls`.
+        split: 'test' (default) or 'validation'
+        tasks: subset of ZERO_SCROLLS_TASKS. None → default 9 tasks
+               (excluding narrative_qa which is too large).
+        cache_dir: download/extract location. Default `/tmp/zero_scrolls`.
     """
     if tasks is None:
         tasks = ZERO_SCROLLS_TASKS
@@ -194,9 +200,9 @@ def stream_zero_scrolls(split: str = "test", tasks: list[str] | None = None,
             print(f"[zs] {task}: {n_rows} rows")
 
 
-# Giữ tên cũ làm alias để các script đã viết không cần sửa nhiều
+# Keep old name as alias so existing scripts don't need much rewriting
 def stream_longbench_v2(split: str = "test"):
-    """DEPRECATED alias cho stream_zero_scrolls — đổi sang ZeroSCROLLS 2026-09-21."""
+    """DEPRECATED alias for stream_zero_scrolls — switched to ZeroSCROLLS 2026-09-21."""
     return stream_zero_scrolls(split=split)
 
 
@@ -221,15 +227,15 @@ def detect_fields(row: dict) -> dict[str, str]:
       - LongBench-v2 (legacy) {context, question, answer, choice}
       - SQuAD v2 {context, question, answers: [{text}], is_impossible}
 
-    Trả về canonical {context, question, answer, choice, task} cho mọi schema.
+    Returns canonical {context, question, answer, choice, task} for any schema.
 
-    ZeroSCROLLS note: input chứa cả prompt+document+separator+question+postfix.
-    Trích context từ input[document_start_index:document_end_index] và
-    question từ input[query_start_index:query_end_index].
+    ZeroSCROLLS note: input contains prompt + document + separator + question
+    + postfix. Extract context from input[document_start_index:document_end_index]
+    and question from input[query_start_index:query_end_index].
     """
     out = {"context": "", "question": "", "answer": "", "choice": "", "task": ""}
 
-    # Task name (ZeroSCROLLS — được gắn vào row bởi stream_zero_scrolls)
+    # Task name (ZeroSCROLLS — attached to row by stream_zero_scrolls)
     if "task" in row:
         out["task"] = str(row["task"])
 
@@ -279,35 +285,31 @@ def detect_fields(row: dict) -> dict[str, str]:
 def build_prompt_track1(context: str) -> str:
     """Prompt for Track 1 (extraction): no question, extract all fields."""
     return (
-        "Hay trich xuat cac truong thong tin quan trong tu hop dong sau. "
-        "Tra ve JSON voi cac key: party_a, party_b, effective_date, contract_value, "
-        "termination_clause. Neu khong co, dat null.\n\n"
-        f"HOP DONG:\n{context}"
+        "Extract the key fields from the contract below. "
+        "Return JSON with keys: party_a, party_b, effective_date, contract_value, "
+        "termination_clause. If a field is missing, set it to null.\n\n"
+        f"CONTRACT:\n{context}"
     )
 
 
 def build_prompt_track2(context: str, question: str) -> str:
-    """Prompt for Track 2 (RAG QA): context + question."""
-    return (
-        f"NGU CANH (hop dong):\n{context}\n\n"
-        f"CAU HOI:\n{question}\n\n"
-        "Tra loi ngan gon, dung thong tin trong ngu canh. Neu khong co trong ngu canh, "
-        "tra 'Khong ro'."
-    )
+    """Prompt for Track 2 (RAG QA): context + question.
+
+    Delegates to canonical prompt in `scripts/_prompts.py` — do NOT edit
+    the prompt string here. Improvements come from compression / routing,
+    not prompt tweaks.
+    """
+    return _format_eval_prompt(context, question)
 
 
 def judge_answer_gemini(model, question: str, gold: str, pred: str) -> dict:
-    """LLM-as-judge: ask Gemini if pred matches gold."""
-    judge_prompt = (
-        "Ban la mot tro ly danh gia. So sanh cau tra loi cua he thong voi dap an tham chieu.\n\n"
-        f"Cau hoi: {question}\n"
-        f"Dap an tham chieu: {gold}\n"
-        f"Cau tra loi he thong: {pred}\n\n"
-        "Neu he thong tra loi dung hoac tuong duong ve nghia (khong can khop ky tu), "
-        "tra ve JSON: {\"correct\": true, \"reason\": \"...\"}.\n"
-        "Neu sai hoac khong dap ung, tra ve: {\"correct\": false, \"reason\": \"...\"}.\n"
-        "Chi tra JSON, khong giai thich them."
-    )
+    """LLM-as-judge: ask Gemini if pred matches gold.
+
+    Uses canonical judge prompt from scripts/_prompts.py (kept in sync with
+    src/op5/llm/judge_prompt.py). Output schema simplified to {correct, reason}
+    for backward compatibility with older scripts.
+    """
+    judge_prompt = _format_gemini_judge_prompt(question, gold, pred)
     try:
         result = call_gemini(model, judge_prompt, max_tokens=200, temperature=0.0)
         text = result["text"]
