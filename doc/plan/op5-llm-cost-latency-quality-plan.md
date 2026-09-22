@@ -116,17 +116,22 @@ Mỗi rule = `IF <điều kiện> THEN <model/endpoint>`. Điều kiện dùng *
 
 | Rule ID | Điều kiện | Model |
 |---|---|---|
-| T1-R1 | Số field cần trích ≤ 10 **và** không có bảng | Model rẻ (DeepSeek-v2.5 / GPT-4o-mini) |
-| T1-R2 | Số field > 10 **hoặc** có ≥ 1 bảng | Model mạnh (GPT-4o / Claude-3.5-Sonnet) |
-| T1-R3 | *(fallback)* | Model mạnh |
+| T1-R1 | Số field cần trích ≤ 10 **và** không có bảng | Model rẻ (`gemini-3.5-flash-lite`) |
+| T1-R2 | Số field > 10 **hoặc** có ≥ 1 bảng | Model mạnh (`gemini-3.1-pro`) |
+| T1-R3 | *(fallback)* | Model mạnh (`gemini-3.1-pro`) |
 
 **Track 2 — routing model (ví dụ, chốt sau khi khảo sát):**
 
 | Rule ID | Điều kiện | Model |
 |---|---|---|
-| T2-R1 | Số token context ước tính < 2000 **và** câu hỏi đơn lẻ | Model rẻ |
-| T2-R2 | Số token context ≥ 2000 **hoặc** câu hỏi yêu cầu tổng hợp nhiều điều khoản | Model mạnh |
-| T2-R3 | *(fallback)* | Model mạnh |
+| T2-R1 | Số token context ước tính < 2000 **và** câu hỏi đơn lẻ | Model rẻ (`gemini-3.5-flash-lite`) |
+| T2-R2 | Số token context ≥ 2000 **hoặc** câu hỏi yêu cầu tổng hợp nhiều điều khoản | Model mạnh (`gemini-3.1-pro`) |
+| T2-R3 | *(fallback)* | Model mạnh (`gemini-3.1-pro`) |
+
+> **Decision 2026-09-22:** tier rẻ = `gemini-3.5-flash-lite` ($0.30/$2.50 per 1M tokens);
+> tier mạnh demo = `gemini-3.1-pro` ($2/$12 per 1M tokens, prompts ≤ 200K). Khi tích hợp
+> GĐ 3, swap sang private model API của công ty cho cả hai tier — giữ nguyên threshold
+> routing, chỉ đổi adapter config (xem §4.13).
 
 > **Cách chốt threshold:** Ban đầu dùng ước lượng token heuristic (ký tự/4). Sau khi có ≥ 20 case, hiệu chỉnh bằng so sánh paired với các ngưỡng khác nhau trên dev set. Threshold không bao giờ tinh chỉnh trên held-out.
 
@@ -152,13 +157,17 @@ Mỗi rule = `IF <điều kiện> THEN <model/endpoint>`. Điều kiện dùng *
 #### 4.4. Định dạng log JSONL bắt buộc
 
 ```jsonl
-{"ts":"2026-09-21T10:30:00Z","track":"extraction","case_id":"C-014","config":"B+D","provider":"deepseek","model":"deepseek-chat","deployment_id":"deepseek-chat-v2.1-2026-08","input_tokens":1834,"output_tokens":412,"cached_input_tokens":1200,"cache_status":"prefix_hit","latency_ms":2340,"cost_usd":0.000812,"pricing_effective_date":"2026-09-01","pred":{"fields":{"party_a":"Cong Ty TNHH ABC","effective_date":"2026-01-01"},"tables":[{"rows":2,"cols":3}]},"ref":{"fields":{"party_a":"Cong Ty TNHH ABC","effective_date":"2026-01-01"},"tables":[{"rows":2,"cols":3}]},"score":{"field_f1":0.92,"table_teds":0.87,"schema_valid":true}}
-{"ts":"2026-09-21T10:30:15Z","track":"rag","case_id":"C-007","config":"B+C+D","provider":"openai","model":"gpt-4o","deployment_id":"gpt-4o-2026-09","input_tokens":4200,"output_tokens":380,"cached_input_tokens":0,"cache_status":"none","latency_ms":4120,"cost_usd":0.001280,"pricing_effective_date":"2026-09-01","pred":{"answer":"...","citations":["page_3","page_7"]},"ref":{"answer":"...","citations":["page_3"]},"score":{"exact_match":0.0,"f1":0.74,"refusal_acc":null,"citation_precision":1.0,"pairwise_preferred":true}}
+{"ts":"2026-09-22T10:30:00Z","track":"extraction","case_id":"C-014","config":"B+D","provider":"google","model":"gemini-3.5-flash-lite","deployment_id":"gemini-3.5-flash-lite-2026-09","input_tokens":1834,"output_tokens":412,"cached_input_tokens":1200,"cache_status":"prefix_hit","latency_ms":2340,"cost_usd":0.001600,"pricing_effective_date":"2026-09-01","pred":{"fields":{"party_a":"Cong Ty TNHH ABC","effective_date":"2026-01-01"},"tables":[{"rows":2,"cols":3}]},"ref":{"fields":{"party_a":"Cong Ty TNHH ABC","effective_date":"2026-01-01"},"tables":[{"rows":2,"cols":3}]},"score":{"field_f1":0.92,"table_teds":0.87,"schema_valid":true}}
+{"ts":"2026-09-22T10:30:15Z","track":"rag","case_id":"C-007","config":"B+C+D","provider":"google","model":"gemini-3.1-pro","deployment_id":"gemini-3.1-pro-2026-09","input_tokens":4200,"output_tokens":380,"cached_input_tokens":0,"cache_status":"none","latency_ms":4120,"cost_usd":0.012960,"pricing_effective_date":"2026-09-01","pred":{"answer":"...","citations":["page_3","page_7"]},"ref":{"answer":"...","citations":["page_3"]},"score":{"exact_match":0.0,"f1":0.74,"refusal_acc":null,"citation_precision":1.0,"pairwise_preferred":true,"judge_model":"nvidia/nemotron-3-ultra-550b-a55b:free"}}
 ```
 
 **Trường bắt buộc trong mọi record:** `ts`, `track`, `case_id`, `config`, `provider`, `model`, `deployment_id`, `input_tokens`, `output_tokens`, `latency_ms`, `cost_usd`, `pricing_effective_date`, `cache_status`, `pred`, `score`.
 
 **Trường bắt buộc riêng Track 2:** `pred.answer`, `pred.citations`, `score.refusal_acc`, `score.citation_precision`.
+
+**Trường tùy chọn** (điền khi dùng LLM-as-judge): `score.judge_model` — id của model judge
+(vd `nvidia/nemotron-3-ultra-550b-a55b:free`). Bắt buộc nếu `score.pairwise_preferred`
+được set, vì cần reproducibility của judgment.
 
 ---
 
@@ -188,7 +197,10 @@ Mỗi rule = `IF <điều kiện> THEN <model/endpoint>`. Điều kiện dùng *
 | 2 | B | Nén prompt (rút system prompt + giữ instruction tối thiểu) | Δcost, Δquality vs A |
 | 3 | D | Routing tất định theo §4.2 (T1-R1/R2/R3) | Δcost, Δquality vs A |
 | 4 | B+D | Nén + routing kết hợp | Synergy hay interference |
-| 5 | D(mạnh) | Luôn dùng model mạnh | Trần chất lượng, baseline cost |
+| 5 | D(mạnh) | Luôn dùng model mạnh (gemini-3.1-pro demo, hoặc private model thật) | Trần chất lượng, baseline cost |
+
+> **Decision 2026-09-22:** cấu hình 5 dùng `gemini-3.1-pro` cho GĐ 2 demo, sang
+> private model API của công ty khi tích hợp GĐ 3 (xem §4.12).
 
 **Track 2 — 7 cấu hình:**
 
@@ -201,6 +213,9 @@ Mỗi rule = `IF <điều kiện> THEN <model/endpoint>`. Điều kiện dùng *
 | 5 | B+D | Nén + routing | Synergy/interference |
 | 6 | C+D | Context gọn + routing | Context gọn có đổi quyết định routing không |
 | 7 | B+C+D | Trần tiết kiệm khả thi | Tổng hợp tất cả đòn bẩy |
+
+> **Decision 2026-09-22:** cấu hình 7 (B+C+D) dùng `gemini-3.1-pro` cho tier mạnh
+> của routing rule, sang private model API của công ty khi tích hợp GĐ 3.
 
 **Phân tích interaction:**
 
@@ -229,6 +244,11 @@ Mỗi rule = `IF <điều kiện> THEN <model/endpoint>`. Điều kiện dùng *
 | Citation precision | Precision của citations: (citations đúng) / (tổng citations đưa ra) | Check page number matches |
 | Pairwise preference | LLM-as-judge so sánh 2 cấu hình trên cùng case, swap vị trí để giảm bias | ≥ 2 reviewer; majority vote |
 
+> **Decision 2026-09-22:** LLM-as-judge dùng `nvidia/nemotron-3-ultra-550b-a55b:free`
+> qua OpenRouter (GPQA Diamond 86.7%, 1M context, Sep 2026 ranking #1 free). Fallback
+> `openrouter/free` router khi rate-limited. Tách khỏi model đang chạy thí nghiệm
+> (tránh self-judge bias) — judge là call độc lập, không phải LLM của Track 1/2.
+
 **Tổng hợp (cả 2 track):**
 
 | Metric | Định nghĩa |
@@ -246,10 +266,10 @@ Mỗi cấu hình = 1 promptfoo YAML:
 # configs/op5-track2-B+C+D.yaml
 description: "OP5 Track 2 B+C+D: nén prompt + chọn lọc context + routing"
 providers:
-  - id: openai/gpt-4o-mini      # model rẻ
+  - id: google/gemini-3.5-flash-lite  # model rẻ ($0.30/$2.50 per 1M)
     config:
       temperature: 0
-  - id: openai/gpt-4o           # model mạnh
+  - id: google/gemini-3.1-pro         # model mạnh ($2/$12 per 1M, prompts ≤ 200K)
     config:
       temperature: 0
 prompts:
@@ -317,7 +337,9 @@ defaultTest:
 
 | Khía cạnh | LLM demo | Private model thật |
 |---|---|---|
-| Pricing | DeepSeek $0.27/1M tokens | Theo bảng giá công ty |
+| Pricing | `gemini-3.5-flash-lite` $0.30/$2.50 per 1M tokens (Sep 2026) | Theo bảng giá công ty |
+
+> **Decision 2026-09-22:** tier mạnh demo (`gemini-3.1-pro`, $2/$12 per 1M) chỉ dùng cho cấu hình 5 (Track 1) và cấu hình 7 (Track 2) — baseline (cấu hình 1) giữ `gemini-3.5-flash-lite` để đo delta cost/quality vs trần.
 | Cache | prefix_hit có thể có | Tùy model (kiểm tra) |
 | Latency | Baseline | Có thể khác (GPU, network) |
 | Quality (relative) | Đo được trên dev | Đo lại trên held-out |
@@ -362,7 +384,7 @@ Dựa trên Pareto frontier cost–quality ở GĐ 2, chọn cấu hình:
 | D2 | OCR provider mã nguồn mở đạt TEDS ≥ 0.85 trên mẫu hợp đồng | Giả định | Cao — nếu không đạt, chuyển sang cloud OCR sớm |
 | D3 | Eval set ground-truth cho ~15–30 hợp đồng | Cần thu thập | Cao — cần mentor duyệt ground-truth |
 | D4 | Quyền truy cập hợp đồng mẫu (đã ẩn danh) | Chưa xác nhận | Cao — blocker cho toàn bộ nếu không có |
-| D5 | DeepSeek / OpenAI API key cho GĐ 1 | Giả định | Thấp — có thể xài tier free |
+| D5 | Google AI API key (`GOOGLE_API_KEY`) cho GĐ 1, OpenRouter key (`OPENROUTER_API_KEY`) cho LLM-as-judge | Giả định | Thấp — cả 2 đều có tier free |
 
 ---
 

@@ -1,26 +1,30 @@
 #!/usr/bin/env python3
 """
-Re-judge existing results using Gemini-as-judge.
+Re-judge existing results using OpenRouter LLM-as-judge.
 
 Reads JSONL results (any phase-01-longllmlingua-opt*.jsonl), filters cases
-where `judge_correct` == False, sends (context_question, gold, pred) to Gemini
-3.1-flash-lite, and writes new JSONL with updated `llm_judge_correct` /
-`llm_judge_reason` fields.
+where `judge_correct` == False, sends (context_question, gold, pred) to OpenRouter
+LLM-as-judge chain (nemotron-3-ultra → deepseek-chat-v3 → openrouter/free),
+and writes new JSONL with updated `llm_judge_*` fields.
+
+Auto-fallback: HTTP 429 / 503 / timeout → try next model in chain.
+Ops log: results/phase-01-{basename}-judge-ops.jsonl
 
 Output:
   results/phase-01-{basename}-llm-judge.jsonl   (re-judged subset)
   results/phase-01-{basename}-llm-judge-summary.json
+  results/phase-01-{basename}-judge-ops.jsonl  (ops log)
 
 Usage:
   conda activate vsf
   python scripts/phase-01/judge_llm_rerun.py \
       --input results/phase-01-longllmlingua-opt-n20.jsonl
+      --log results/phase-01-judge-ops.jsonl
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 import time
@@ -28,117 +32,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-try:
-    from dotenv import load_dotenv
-    load_dotenv(REPO_ROOT / ".env")
-except ImportError:
-    pass
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from dotenv import load_dotenv
+load_dotenv(REPO_ROOT / ".env")
 
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
-# ---------------------------------------------------------------
-# Judge prompt template
-# ---------------------------------------------------------------
-LLM_JUDGE_PROMPT = """Ban la mot truong gia phan bien (expert evaluator).
-
-Ngu canh (tuy chon, co the trong):
-{context}
-
-Cau hoi: {question}
-
-Dap an chuan (ground truth): {gold}
-
-Dap an cua he thong (prediction): {pred}
-
-Nhiem vu: Danh gia dap an cua he thong co chinh xac khong.
-
-Tieu chi danh gia:
-- "correct" neu dap an bat dau bang cung thong tin dung tu ground truth, hoac
-  co y nghia tuong duong (vi du: "Poland" = "Ba Lan", "70%" = "70 percent")
-- "ambiguous" neu co the dung nhung khong chac chan (confidence < 0.7)
-- "incorrect" neu thong tin chinh hoac dac biet la thong tin SO DO vi pham ground truth
-
-Tra loi CHI VOI JSON (khong giai thich them):
-{{"verdict": "correct"|"incorrect"|"ambiguous", "reason": "... (1-2 cau tieng Viet)", "confidence": 0.0-1.0}}
-"""
-
-
-# ---------------------------------------------------------------
-# Gemini client (lazy)
-# ---------------------------------------------------------------
-_gemini = None
-
-
-def get_gemini(model_name: str = "gemini-3.1-flash-lite"):
-    global _gemini
-    if _gemini is None:
-        import google.generativeai as genai
-        key = os.getenv("GOOGLE_API_KEY")
-        if not key:
-            raise RuntimeError("GOOGLE_API_KEY missing — set GOOGLE_API_KEY")
-        genai.configure(api_key=key)
-        _gemini = genai.GenerativeModel(model_name)
-        print(f"  [init] Gemini-as-judge ready: {model_name}")
-    return _gemini
-
-
-# ---------------------------------------------------------------
-# LLM-as-judge call
-# ---------------------------------------------------------------
-def llm_judge(model, question: str, gold: str, pred: str, context: str = "",
-              max_retries: int = 3) -> dict:
-    prompt = LLM_JUDGE_PROMPT.format(
-        context=context[:2000] if context else "(khong co nghi canh)",
-        question=question or "(khong co cau hoi — task tu dong)",
-        gold=gold[:500],
-        pred=pred[:500],
-    )
-    for attempt in range(max_retries):
-        try:
-            r = model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": 0.1,
-                    "max_output_tokens": 200,
-                },
-            )
-            raw = (r.text or "").strip()
-            # Try to extract JSON
-            m = re.search(r"\{[^}]+\}", raw, re.DOTALL)
-            if m:
-                obj = json.loads(m.group())
-                verdict = obj.get("verdict", "ambiguous").lower()
-                confidence = float(obj.get("confidence", 0.5))
-                reason = str(obj.get("reason", ""))
-                return {
-                    "verdict": verdict,
-                    "correct": verdict == "correct",
-                    "reason": reason,
-                    "confidence": confidence,
-                    "raw": raw,
-                }
-            # Fallback: keyword heuristic on raw response
-            lower = raw.lower()
-            if any(w in lower for w in ["\"correct\"", "correct", "chinh xac", "dung"]):
-                return {"verdict": "correct", "correct": True,
-                        "reason": raw[:80], "confidence": 0.6, "raw": raw}
-            elif any(w in lower for w in ["\"incorrect\"", "incorrect", "sai", "khong dung"]):
-                return {"verdict": "incorrect", "correct": False,
-                        "reason": raw[:80], "confidence": 0.6, "raw": raw}
-            return {"verdict": "ambiguous", "correct": None,
-                    "reason": raw[:80], "confidence": 0.5, "raw": raw}
-        except Exception as exc:
-            err = str(exc)
-            if "429" in err or "quota" in err.lower():
-                wait = 15 * (attempt + 1)
-                print(f"    [warn] 429, sleeping {wait}s (try {attempt+1}/{max_retries})...")
-                time.sleep(wait)
-            else:
-                return {"verdict": "error", "correct": None,
-                        "reason": f"{type(exc).__name__}: {err[:100]}", "confidence": 0.0}
-    return {"verdict": "timeout", "correct": None,
-            "reason": "max retries exceeded", "confidence": 0.0}
+from op5.llm import OpenRouterJudge
 
 
 # ---------------------------------------------------------------
@@ -173,11 +73,25 @@ def extract_dataset_id(case_id: str) -> str:
 # Main
 # ---------------------------------------------------------------
 def main() -> int:
-    parser = argparse.ArgumentParser(description="LLM-as-judge re-run on existing results")
-    parser.add_argument("--input", "-i", type=Path, required=True,
-                        help="Input JSONL (e.g. results/phase-01-longllmlingua-opt-n20.jsonl)")
-    parser.add_argument("--only-failed", action="store_true", default=True,
-                        help="Only re-judge heuristic failures (default True)")
+    parser = argparse.ArgumentParser(
+        description="OpenRouter LLM-as-judge re-run on existing results"
+    )
+    parser.add_argument(
+        "--input", "-i", type=Path, required=True,
+        help="Input JSONL (e.g. results/phase-01-longllmlingua-opt-n20.jsonl)"
+    )
+    parser.add_argument(
+        "--log", "-l", type=Path, default=None,
+        help="Ops JSONL log path (default: results/phase-01-{basename}-judge-ops.jsonl)"
+    )
+    parser.add_argument(
+        "--only-failed", action="store_true", default=True,
+        help="Only re-judge heuristic failures (default True)"
+    )
+    parser.add_argument(
+        "--delay", type=float, default=1.0,
+        help="Sleep seconds between calls (default 1.0)"
+    )
     args = parser.parse_args()
 
     if not args.input.exists():
@@ -216,7 +130,6 @@ def main() -> int:
     for rec in heuristic_miss:
         cid = rec.get("case_id", "")
         did = extract_dataset_id(cid)
-        # Try exact, then partial
         ds_info = ds_map.get(did)
         if not ds_info:
             ds_info = ds_map.get(cid)
@@ -242,12 +155,23 @@ def main() -> int:
         print("  Nothing to judge. Exiting.")
         return 0
 
-    # Run LLM judge
-    model = get_gemini()
-    out_all = list(heuristic_ok)  # copy heuristic-ok rows unchanged
-    heuristic_miss_ids = set(r["case_id"] for r in heuristic_miss)
+    # Ops log path
+    if args.log is None:
+        in_name = args.input.stem.removeprefix("phase-01-")
+        args.log = REPO_ROOT / "results" / f"phase-01-{in_name}-judge-ops.jsonl"
+    args.log.parent.mkdir(parents=True, exist_ok=True)
 
+    # Init OpenRouter judge with fallback chain
+    judge = OpenRouterJudge(log_path=args.log)
+    print(f"\n  OpenRouterJudge initialized")
+    print(f"  Model chain: {judge.models}")
+    print(f"  Ops log: {args.log}")
+
+    # Run judge
+    out_all = list(heuristic_ok)  # copy heuristic-ok rows unchanged
     total = len(cases_to_judge)
+    model_counts = {}
+
     for i, (rec, ds_info) in enumerate(cases_to_judge):
         cid = rec["case_id"]
         pred = rec.get("pred", "")
@@ -260,24 +184,36 @@ def main() -> int:
         print(f"    Gold: {gold[:60]!r}")
         print(f"    Pred: {pred[:60]!r}")
 
-        jj = llm_judge(model, question, gold, pred, context=context)
-        rec["llm_judge_verdict"] = jj["verdict"]
-        rec["llm_judge_correct"] = jj["correct"]
-        rec["llm_judge_reason"] = jj["reason"]
-        rec["llm_judge_confidence"] = jj.get("confidence", 0.0)
-        rec["llm_judge_raw"] = jj.get("raw", "")[:200]
+        jj = judge.judge(
+            question=question,
+            gold=gold,
+            pred=pred,
+            context=context,
+        )
+        rec["llm_judge_verdict"] = jj.verdict
+        rec["llm_judge_correct"] = jj.correct
+        rec["llm_judge_reason"] = jj.reason
+        rec["llm_judge_confidence"] = jj.confidence
+        rec["llm_judge_raw"] = jj.raw[:200]
+        rec["llm_judge_model"] = jj.model_used
+        rec["llm_judge_latency_ms"] = round(jj.latency_ms, 1)
 
-        verdict_str = jj["verdict"]
-        conf = jj.get("confidence", 0.0)
-        print(f"    -> {verdict_str} (conf={conf:.2f}) {jj['reason'][:60]}")
+        model_counts[jj.model_used] = model_counts.get(jj.model_used, 0) + 1
+
+        verdict_str = jj.verdict
+        conf = jj.confidence
+        print(f"    -> {verdict_str} (conf={conf:.2f}) model={jj.model_used}")
+        print(f"    {jj.reason[:60]}")
 
         out_all.append(rec)
 
         # Rate limit
-        time.sleep(1.0)
+        time.sleep(args.delay)
 
     # Write outputs
-    in_name = args.input.stem
+    # in_name = "phase-01-longllmlingua-opt-n20-final" — strip leading "phase-01-"
+    # to avoid double prefix in output filename
+    in_name = args.input.stem.removeprefix("phase-01-")
     out_path = REPO_ROOT / "results" / f"phase-01-{in_name}-llm-judge.jsonl"
     summary_path = REPO_ROOT / "results" / f"phase-01-{in_name}-llm-judge-summary.json"
 
@@ -294,7 +230,6 @@ def main() -> int:
     n_llm_ambiguous = sum(1 for r in out_all if r.get("llm_judge_verdict") == "ambiguous")
     n_skipped = len(skipped)
 
-    # Improvement from LLM judge
     improved = sum(1 for r in cases_to_judge
                    if r[0].get("llm_judge_correct") is True)
     still_wrong = sum(1 for r in cases_to_judge
@@ -316,6 +251,8 @@ def main() -> int:
 
     summary = {
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "judge_provider": "openrouter",
+        "judge_model_chain": judge.models,
         "input": str(args.input),
         "n_total": n_total,
         "heuristic_correct": n_heuristic_ok,
@@ -326,6 +263,7 @@ def main() -> int:
             "ambiguous": n_llm_ambiguous,
             "skipped": n_skipped,
         },
+        "model_usage": model_counts,
         "improvement": {
             "was_miss_now_correct": improved,
             "was_miss_still_wrong": still_wrong,
@@ -349,17 +287,20 @@ def main() -> int:
 
     # Print summary
     print("\n" + "=" * 80)
-    print(" LLM-AS-JUDGE SUMMARY")
+    print(" LLM-AS-JUDGE SUMMARY (OpenRouter)")
     print("=" * 80)
-    print(f"  Input:              {args.input.name}")
-    print(f"  Total cases:        {n_total}")
-    print(f"  Heuristic OK:      {n_heuristic_ok} (acc={acc_heuristic:.1%})")
-    print(f"  LLM-judged:         {len(cases_to_judge)}")
-    print(f"    -> correct:      {n_llm_correct}")
-    print(f"    -> incorrect:    {n_llm_incorrect}")
-    print(f"    -> ambiguous:    {n_llm_ambiguous}")
-    print(f"    -> skipped:     {n_skipped}")
-    print(f"  Improvement:        {improved}/{len(cases_to_judge)} heuristic-miss -> now correct")
+    print(f"  Judge provider:       OpenRouter")
+    print(f"  Model chain:          {judge.models}")
+    print(f"  Model usage:          {model_counts}")
+    print(f"  Input:                {args.input.name}")
+    print(f"  Total cases:          {n_total}")
+    print(f"  Heuristic OK:       {n_heuristic_ok} (acc={acc_heuristic:.1%})")
+    print(f"  LLM-judged:           {len(cases_to_judge)}")
+    print(f"    -> correct:       {n_llm_correct}")
+    print(f"    -> incorrect:     {n_llm_incorrect}")
+    print(f"    -> ambiguous:     {n_llm_ambiguous}")
+    print(f"    -> skipped:       {n_skipped}")
+    print(f"  Improvement:          {improved}/{len(cases_to_judge)} heuristic-miss -> now correct")
     print(f"  Accuracy (heuristic only):   {acc_heuristic:.1%}")
     print(f"  Accuracy (heuristic + LLM):   {acc_llm:.1%}")
     print(f"\n  Per-task:")
@@ -369,6 +310,7 @@ def main() -> int:
         print(f"    {t:<20s} n={v['n']:>2}  heuristic={ha:.1%}  llm={la:.1%}")
     print(f"\n  Output: {out_path}")
     print(f"          {summary_path}")
+    print(f"          {args.log}")
     return 0
 
 

@@ -1,0 +1,15 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Default judge chain — tried in order until one succeeds.
+#
+# Each entry references a profile file (without .yaml extension) in this dir.
+# Profiles earlier in the list have higher priority.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# NIM first: best latency + GPQA 86.7% (confirmed Sep 2026 integration scan)
+- nim
+
+# OpenRouter free tier: Nemotron 550B + DeepSeek V3 (no-cost backup)
+- openrouter
+
+# Gemini API: Google AI Studio (final fallback, may incur cost)
+- gemini
