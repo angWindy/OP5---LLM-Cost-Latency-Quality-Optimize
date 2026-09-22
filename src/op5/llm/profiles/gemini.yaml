@@ -1,0 +1,22 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Gemini Judge Profile — Google AI Studio
+# Provider: Google AI Studio (generativeai.google.com endpoint)
+#
+# Env: GOOGLE_API_KEY must be set in .env
+# Models: tried in order until one succeeds
+#   1. gemini-3.5-flash-lite   (fast, cost-effective)
+#   2. gemini-3.1-flash-lite   (faster, cheaper)
+# ─────────────────────────────────────────────────────────────────────────────
+
+base_url: https://generativeai.googleapis.com/v1beta1
+api_key: ${GOOGLE_API_KEY}
+api_type: gemini
+
+models:
+  - gemini-3.5-flash-lite
+  - gemini-3.1-flash-lite
+
+timeout: 60
+temperature: 0.1
+max_tokens: 800
+label: Gemini-Flash-Lite

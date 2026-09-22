@@ -318,3 +318,77 @@ def judge_answer_gemini(model, question: str, gold: str, pred: str) -> dict:
             return {"judge_correct": "true" in text.lower(), "judge_reason": text[:200]}
     except Exception as exc:
         return {"judge_correct": None, "judge_reason": f"judge error: {exc}"}
+
+
+def judge_answer_openrouter(
+    question: str = "",
+    gold: str = "",
+    pred: str = "",
+    context: str = "",
+    log_path: str | Path | None = None,
+) -> dict:
+    """
+    DEPRECATED — use judge_answer_llm_judge() instead.
+
+    LLM-as-judge via OpenRouter with automatic fallback chain.
+
+    Primary model:  nvidia/nemotron-3-ultra-550b-a55b:free
+    Fallback models: deepseek/deepseek-chat-v3:free → openrouter/free
+
+    Auto-fallback triggers: HTTP 429, 503, timeout, parse failure.
+    Results include model_used for reproducibility.
+
+    Returns dict with keys: verdict, correct, reason, confidence, model_used, raw, latency_ms
+
+    Env vars:
+        OPENROUTER_API_KEY — required
+        OP5_JUDGE_TEMPERATURE — default 0.1
+    """
+    return judge_answer_llm_judge(
+        question=question,
+        gold=gold,
+        pred=pred,
+        context=context,
+        profile="openrouter",
+        log_path=log_path,
+    )
+
+
+def judge_answer_llm_judge(
+    question: str = "",
+    gold: str = "",
+    pred: str = "",
+    context: str = "",
+    profile: str | None = None,
+    log_path: str | Path | None = None,
+) -> dict:
+    """
+    LLM-as-judge via the unified LLMJudge with profile routing.
+
+    Chain (default): NIM → OpenRouter → Gemini
+    Single profile:  specify profile="nim" (fastest) or profile="openrouter"
+
+    Args:
+        question: evaluation question
+        gold: ground truth answer
+        pred: model prediction
+        context: optional supporting context
+        profile: single profile name (e.g. "nim", "openrouter", "gemini").
+                 None → auto-chain from config.yaml
+        log_path: optional ops log path
+
+    Returns dict with keys:
+        verdict, correct, reason, confidence, model_used, raw, latency_ms
+
+    Env vars (loaded from .env):
+        NVIDIA_API_KEY, OPENROUTER_API_KEY, GOOGLE_API_KEY
+    """
+    from op5.llm import LLMJudge
+    judge = LLMJudge(profile=profile, log_path=Path(log_path) if log_path else None)
+    result = judge.judge(
+        question=question,
+        gold=gold,
+        pred=pred,
+        context=context,
+    )
+    return result.to_dict()

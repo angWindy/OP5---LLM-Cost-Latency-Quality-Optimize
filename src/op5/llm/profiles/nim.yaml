@@ -1,0 +1,22 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# NIM Judge Profile — NVIDIA NIM
+# Provider: NVIDIA NGC NIM (OpenAI-compatible /chat/completions endpoint)
+#
+# Env: NVIDIA_API_KEY must be set in .env
+# Models: tried in order until one succeeds
+#   1. nvidia/nemotron-3-ultra-550b-a55b  (550B MoE, GPQA 86.7%, ~760ms)
+#   2. meta/llama-3.2-11b-vision-instruct (11B, ~606ms, fast fallback)
+# ─────────────────────────────────────────────────────────────────────────────
+
+base_url: https://integrate.api.nvidia.com/v1
+api_key: ${NVIDIA_API_KEY}
+api_type: nvidia
+
+models:
+  - nvidia/nemotron-3-ultra-550b-a55b
+  - meta/llama-3.2-11b-vision-instruct
+
+timeout: 60
+temperature: 0.1
+max_tokens: 800
+label: NIM-Nemotron

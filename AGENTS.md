@@ -24,6 +24,14 @@
 | Document a decision | Append to `doc/worklog/YYYY-MM-DD-phase-XX-<topic>.md` |
 | Start a new phase | Add `doc/phases/phase-XX-<slug>.md`, mark `active` in `INDEX.md` |
 
+## Language rules
+
+- **Code** (classes, functions, variables, comments, docstrings): English only.
+- **Documentation & guides** (README, doc/, worklog/): keep existing language (Tiếng Việt).
+- **User-facing prompts / system messages for LLM calls**: English, but model should
+  respond in the same language as the input context. Example: a prompt in English
+  asking about a Vietnamese document → model responds in Vietnamese.
+
 ## What NOT to do
 
 - Don't `Read` anything under `data/raw/` or `data/processed/` without the user

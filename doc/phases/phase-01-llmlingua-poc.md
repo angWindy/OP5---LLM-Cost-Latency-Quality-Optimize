@@ -143,7 +143,10 @@ Xem chi tiết tại [`doc/worklog/2026-09-21-3-approach-1case.md`](../worklog/2
 | Compressor (Track 2) | **LongLLMLingua** | Nén theo câu hỏi, giảm "lost in the middle" |
 | Wrapper | LangChain (`LLMLinguaCompressor`) | One-line integration, plug vào RAG chain dễ |
 | Dataset | `tau/zero_scrolls` (ZeroSCROLLS) | Multi-domain 10 tasks, avg ~10k tokens context, có gold answer, public HF, đã được paper benchmark |
-| Model | `gemini-3.5-flash-lite` | Rẻ, nhanh, free tier đủ |
+| **Baseline LLM** | `gemini-3.5-flash-lite` (Google AI) | Rẻ ($0.30/$2.50 per 1M tokens), nhanh, free tier đủ, GA Jul 21 2026 |
+| **Trần chất lượng LLM (Phase 4+)** | `gemini-3.1-pro` (Google AI) | Flagship Gemini ($2/$12 per 1M tokens), prompts ≤ 200K, dùng cho cấu hình D(mạnh) |
+| **LLM-as-judge (eval)** | `nvidia/nemotron-3-ultra-550b-a55b:free` qua OpenRouter | Free, GPQA Diamond 86.7%, 1M context, Sep 2026 ranking #1 free model. Fallback `openrouter/free` router |
+| **Product (Phase 3)** | Private model API của công ty | Khi tích hợp thật — chỉ đổi adapter config, giữ threshold routing |
 
 ## Environment
 
@@ -187,7 +190,8 @@ hoặc `os.environ`. **Không commit key.**
 - **R1.** LLMLingua download ~1GB compression model lần đầu. Mitigation: cache ở
   `~/.cache/huggingface/` (đã trong `.gitignore`).
 - **R2.** Gemini free-tier rate limit. Mitigation: dùng `gemini-3.5-flash-lite`,
-  sleep giữa các call nếu cần.
+  sleep giữa các call nếu cần. Nếu vẫn 429, fallback sang tier paid hoặc chuyển
+  sang OpenRouter `google/gemini-3.5-flash-lite`.
 - **R3.** ZeroSCROLLS là public trên HF, không cần token. Legacy LongBench-v2 thì
   tùy trường hợp — thử `use_auth_token=False` trước, fallback sang ZeroSCROLLS (mặc định).
 - **R4.** ZeroSCROLLS context ~10k tokens — vừa đủ để test compressor ở tỉ lệ nén
