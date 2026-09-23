@@ -29,13 +29,15 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from dotenv import load_dotenv
 load_dotenv(REPO_ROOT / ".env")
+from _http import get_session
 from _prompts import format_eval_prompt as _format_eval_prompt
+
+# Process-wide HTTP session reused across all calls.
+_SESSION = get_session()
 
 ZEROSCROLLS_CACHE = Path("/tmp/zero_scrolls")
 SAMPLE_PATH = REPO_ROOT / "data" / "processed" / "zero_scrolls_200.jsonl"
@@ -67,7 +69,9 @@ def download_task(task: str) -> Path:
     zip_path = ZEROSCROLLS_CACHE / f"{task}.zip"
     print(f"  [download] {task} ...", end=" ", flush=True)
     try:
-        r = requests.get(url, stream=True, timeout=180)
+        # Streaming download — keep requests.get directly (not via call_with_retry)
+        # because we want chunked iteration, not a buffered response.
+        r = _SESSION.get(url, stream=True, timeout=180)
         if r.status_code != 200:
             raise RuntimeError(f"HTTP {r.status_code} for {url}")
         with zip_path.open("wb") as f:
@@ -173,12 +177,14 @@ def stratified_sample_200(rows: list[dict], n_total: int = 200, seed: int = 42) 
 # ---------------------------------------------------------------
 # 3. Run baseline Gemini call
 # ---------------------------------------------------------------
-def call_gemini_baseline(prompt: str, *, max_retries: int = 4) -> dict:
-    """Single Gemini REST call with retry/backoff.
+def call_gemini_baseline(prompt: str, *, max_retries: int = 3) -> dict:
+    """Single Gemini REST call with capped retry/backoff (via shared session).
 
     Returns dict with keys: status, text, input_tokens, output_tokens,
     latency_ms, error (if any), http_code.
     """
+    from _http import call_with_retry
+
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return {"status": "error", "error": "GOOGLE_API_KEY not set"}
@@ -188,70 +194,45 @@ def call_gemini_baseline(prompt: str, *, max_retries: int = 4) -> dict:
         "generationConfig": {"temperature": 0.0, "maxOutputTokens": 256},
     }
 
-    backoff = 2.0
-    for attempt in range(max_retries):
-        t0 = time.perf_counter()
-        try:
-            resp = requests.post(url, json=payload, timeout=120)
-            elapsed_ms = (time.perf_counter() - t0) * 1000.0
-            sc = resp.status_code
+    t0 = time.perf_counter()
+    try:
+        resp = call_with_retry(
+            "POST", url, max_retries=max_retries, timeout=120,
+            json=payload, session=_SESSION,
+        )
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        sc = resp.status_code
 
-            if sc == 200:
-                data = resp.json()
-                # Handle safety blocks
-                candidates = data.get("candidates", [])
-                if not candidates:
-                    return {
-                        "status": "blocked", "http_code": 200,
-                        "latency_ms": elapsed_ms,
-                        "error": "no candidates (safety block or empty)",
-                        "raw": json.dumps(data)[:300],
-                    }
-                parts = candidates[0].get("content", {}).get("parts", [])
-                text = "".join(p.get("text", "") for p in parts).strip()
-                usage = data.get("usageMetadata", {})
+        if sc == 200:
+            data = resp.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
                 return {
-                    "status": "ok",
-                    "text": text,
-                    "input_tokens": usage.get("promptTokenCount"),
-                    "output_tokens": usage.get("candidatesTokenCount"),
+                    "status": "blocked", "http_code": 200,
                     "latency_ms": elapsed_ms,
-                    "http_code": 200,
+                    "error": "no candidates (safety block or empty)",
+                    "raw": json.dumps(data)[:300],
                 }
-
-            if sc == 429:
-                # Rate limit — backoff and retry
-                wait = backoff ** attempt
-                time.sleep(wait)
-                continue
-            if sc in (500, 502, 503, 504):
-                # Transient — backoff and retry
-                wait = backoff ** attempt
-                time.sleep(wait)
-                continue
-            if sc in (400, 403):
-                body = resp.text[:300]
-                return {
-                    "status": "error", "http_code": sc, "latency_ms": elapsed_ms,
-                    "error": f"HTTP {sc}: {body}",
-                }
-            # Other 4xx — don't retry
+            parts = candidates[0].get("content", {}).get("parts", [])
+            text = "".join(p.get("text", "") for p in parts).strip()
+            usage = data.get("usageMetadata", {})
             return {
-                "status": "error", "http_code": sc, "latency_ms": elapsed_ms,
-                "error": f"HTTP {sc}: {resp.text[:200]}",
+                "status": "ok",
+                "text": text,
+                "input_tokens": usage.get("promptTokenCount"),
+                "output_tokens": usage.get("candidatesTokenCount"),
+                "latency_ms": elapsed_ms,
+                "http_code": 200,
             }
-        except requests.Timeout:
-            if attempt < max_retries - 1:
-                time.sleep(backoff ** attempt)
-                continue
-            return {"status": "timeout", "error": "timeout after retries"}
-        except requests.ConnectionError as exc:
-            if attempt < max_retries - 1:
-                time.sleep(backoff ** attempt)
-                continue
-            return {"status": "error", "error": f"connection: {exc}"}
-
-    return {"status": "error", "error": "exhausted retries (429/5xx)"}
+        # Non-retryable HTTP errors (already past any retries in call_with_retry)
+        body = resp.text[:300]
+        return {
+            "status": "error", "http_code": sc, "latency_ms": elapsed_ms,
+            "error": f"HTTP {sc}: {body}",
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc),
+                "latency_ms": (time.perf_counter() - t0) * 1000.0}
 
 
 def truncate_context(context: str, question: str, target_tokens: int) -> tuple[str, bool]:
