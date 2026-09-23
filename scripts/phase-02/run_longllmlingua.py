@@ -42,6 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from dotenv import load_dotenv
 load_dotenv(REPO_ROOT / ".env")
+from _http import get_session
 from _prompts import format_eval_prompt as _format_eval_prompt
 
 # Repo paths
@@ -60,6 +61,9 @@ ZERO_SCROLLS_TASKS = [
 ]
 
 PROMPT_TEMPLATE = None  # canonical prompt lives in scripts/_prompts.py
+
+# Process-wide HTTP session.
+_SESSION = get_session()
 
 
 # ---------------------------------------------------------------
@@ -124,10 +128,18 @@ def compress_longllmlingua(context: str, question: str,
 
 
 # ---------------------------------------------------------------
-# Gemini call (HTTP REST, mirrors baseline_200.py)
+# Gemini call (HTTP REST, shared session, mirrors baseline_200.py)
 # ---------------------------------------------------------------
-def call_gemini(prompt: str, model: str, *, max_retries: int = 4,
-                sleep_between: float = 3.0) -> dict:
+def call_gemini(prompt: str, model: str, *, max_retries: int = 3,
+                max_tokens: int = 256, sleep_between: float = 3.0) -> dict:
+    """Single Gemini REST call via shared session + capped retry/backoff.
+
+    `sleep_between` is retained for backward compat; the session and capped
+    backoff (15s max) inside `_http.call_with_retry` removes the need for
+    long inter-attempt sleeps.
+    """
+    from _http import call_with_retry
+
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return {"status": "error", "error": "GOOGLE_API_KEY not set"}
@@ -135,52 +147,38 @@ def call_gemini(prompt: str, model: str, *, max_retries: int = 4,
     url = GEMINI_URL.format(model=model) + f"?key={api_key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 256},
+        "generationConfig": {"temperature": 0.0, "maxOutputTokens": max_tokens},
     }
-    backoff = [30, 60, 120, 180]
-    for attempt in range(max_retries):
-        t0 = time.perf_counter()
-        try:
-            import requests
-            resp = requests.post(url, json=payload, timeout=120)
-            elapsed = (time.perf_counter() - t0) * 1000
-            sc = resp.status_code
 
-            if sc == 200:
-                data = resp.json()
-                cands = data.get("candidates", [])
-                if not cands:
-                    return {"status": "blocked", "latency_ms": elapsed,
-                            "error": "no candidates (safety block)"}
-                parts = cands[0].get("content", {}).get("parts", [])
-                text = "".join(p.get("text", "") for p in parts).strip()
-                usage = data.get("usageMetadata", {})
-                return {
-                    "status": "ok", "text": text,
-                    "input_tokens": usage.get("promptTokenCount"),
-                    "output_tokens": usage.get("candidatesTokenCount"),
-                    "latency_ms": elapsed,
-                }
-            if sc in (429, 500, 502, 503, 504):
-                if attempt < max_retries - 1:
-                    time.sleep(backoff[min(attempt, len(backoff) - 1)])
-                    continue
-                return {"status": "error", "error": f"HTTP {sc} after retries",
-                        "latency_ms": elapsed}
-            return {"status": "error", "error": f"HTTP {sc}: {resp.text[:200]}",
-                    "latency_ms": elapsed}
-        except requests.Timeout:
-            if attempt < max_retries - 1:
-                time.sleep(backoff[min(attempt, len(backoff) - 1)])
-                continue
-            return {"status": "timeout", "error": "timeout after retries"}
-        except Exception as exc:
-            if attempt < max_retries - 1:
-                time.sleep(backoff[min(attempt, len(backoff) - 1)])
-                continue
-            return {"status": "error", "error": str(exc)}
+    t0 = time.perf_counter()
+    try:
+        resp = call_with_retry(
+            "POST", url, max_retries=max_retries, timeout=120,
+            json=payload, session=_SESSION,
+        )
+        elapsed = (time.perf_counter() - t0) * 1000
+        sc = resp.status_code
 
-    return {"status": "error", "error": "exhausted retries"}
+        if sc == 200:
+            data = resp.json()
+            cands = data.get("candidates", [])
+            if not cands:
+                return {"status": "blocked", "latency_ms": elapsed,
+                        "error": "no candidates (safety block)"}
+            parts = cands[0].get("content", {}).get("parts", [])
+            text = "".join(p.get("text", "") for p in parts).strip()
+            usage = data.get("usageMetadata", {})
+            return {
+                "status": "ok", "text": text,
+                "input_tokens": usage.get("promptTokenCount"),
+                "output_tokens": usage.get("candidatesTokenCount"),
+                "latency_ms": elapsed,
+            }
+        return {"status": "error", "error": f"HTTP {sc}: {resp.text[:200]}",
+                "latency_ms": elapsed}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc),
+                "latency_ms": (time.perf_counter() - t0) * 1000}
 
 
 # ---------------------------------------------------------------
