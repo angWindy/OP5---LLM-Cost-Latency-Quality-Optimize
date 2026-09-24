@@ -6,12 +6,14 @@ from op5.llm.judge import LLMJudge, JudgeResult, make_judge
 # Legacy aliases — existing code keeps working
 from op5.llm.nim_judge import NIMJudge
 from op5.llm.openrouter_judge import OpenRouterJudge
+from op5.llm.gemini_client import GeminiClient
 
 __all__ = [
     # New unified API (recommended)
     "LLMJudge",
     "JudgeResult",
     "make_judge",
+    "GeminiClient",
     # Legacy (kept for backward compat)
     "NIMJudge",
     "OpenRouterJudge",
