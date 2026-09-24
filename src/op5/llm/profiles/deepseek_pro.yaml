@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DeepSeek Pro Judge Profile — stronger model for LLM-as-judge
+# Provider: api.deepseek.com (OpenAI-compatible /chat/completions endpoint)
+#
+# Env: DEEPSEEK_API_KEY must be set in .env
+# Model: deepseek-v4-pro (V4 flagship, slower but stronger reasoning)
+#
+# Pricing (per 1M tokens, as of Sep 2026):
+#   - deepseek-v4-pro: $0.55 input / $2.19 output
+# Off-peak discount (16:30-00:30 UTC) halves the price.
+# ─────────────────────────────────────────────────────────────────────────────
+
+base_url: https://api.deepseek.com/v1
+api_key: ${DEEPSEEK_API_KEY}
+api_type: openai
+
+models:
+  - deepseek-v4-pro
+
+timeout: 90
+temperature: 0.1
+max_tokens: 800
+label: DeepSeek-V4-Pro

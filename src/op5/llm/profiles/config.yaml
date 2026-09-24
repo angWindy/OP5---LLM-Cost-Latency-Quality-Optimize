@@ -5,7 +5,11 @@
 # Profiles earlier in the list have higher priority.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# NIM first: best latency + GPQA 86.7% (confirmed Sep 2026 integration scan)
+# DeepSeek first: V3.2-Exp chat is ~$0.27/$1.10 per 1M tokens, reasoning strong,
+# 64K context. Cheap off-peak discount available (16:30-00:30 UTC).
+- deepseek
+
+# NIM second: best latency + GPQA 86.7% (confirmed Sep 2026 integration scan)
 - nim
 
 # OpenRouter free tier: Nemotron 550B + DeepSeek V3 (no-cost backup)
