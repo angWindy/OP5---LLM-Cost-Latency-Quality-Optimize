@@ -1,0 +1,44 @@
+# Phase 03 — OCR Bake-off + RAG + Sensitive-PII Redaction + Docker Storage
+# No-torch policy: prefer CPU-friendly, lightweight deps.
+# Python 3.11 (conda env: vsf).
+
+# OCR providers (all CPU-friendly, no torch)
+paddleocr>=2.7
+paddlepaddle>=2.6
+pytesseract>=0.3.10
+easyocr>=1.7
+
+# System packages (install via apt, NOT pip):
+#   tesseract-ocr, tesseract-ocr-vie, poppler-utils
+
+# Schema validation
+jsonschema>=4.21
+
+# Embedding for RAG (ONNX backend, no torch)
+sentence-transformers>=2.7
+onnxruntime>=1.17
+
+# Vector store client (Docker mode)
+chromadb-client>=0.4
+psycopg2-binary>=2.9
+redis>=5.0
+boto3>=1.34
+
+# Re-rank for RAG (Track 2 C-lever)
+rank-bm25>=0.2
+
+# Misc
+pypdf>=4.0
+jiwer>=3.0
+python-dotenv>=1.0
+PyYAML>=6.0
+
+# HTTP for Gemini (already used by Phase 02)
+httpx>=0.27
+tenacity>=8.2
+
+# Plots for pareto
+matplotlib>=3.8
+
+# Testing
+pytest>=8.0

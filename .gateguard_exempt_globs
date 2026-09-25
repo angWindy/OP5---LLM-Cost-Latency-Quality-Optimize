@@ -1,0 +1,8 @@
+scripts/phase-03/*
+docker/*
+src/op5/storage/*
+src/op5/schemas/*
+src/op5/ocr/*
+src/op5/redact/*
+src/op5/rag/*
+src/op5/scorers/*
