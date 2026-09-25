@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://op5.local/schemas/eval_log.json",
+  "title": "EvalLog",
+  "description": "One row per (case, config, run). Used for Pareto + analysis.",
+  "type": "object",
+  "required": [
+    "ts",
+    "track",
+    "case_id",
+    "config",
+    "provider",
+    "model",
+    "deployment_id",
+    "input_tokens",
+    "output_tokens",
+    "latency_ms",
+    "cost_usd",
+    "cache_status",
+    "pred",
+    "ref",
+    "score"
+  ],
+  "properties": {
+    "ts": { "type": "string", "format": "date-time" },
+    "track": { "type": "string", "enum": ["ocr", "track1", "track2", "redaction_smoke"] },
+    "case_id": { "type": "string" },
+    "config": { "type": "string" },
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "deployment_id": { "type": "string" },
+    "input_tokens": { "type": "integer", "minimum": 0 },
+    "output_tokens": { "type": "integer", "minimum": 0 },
+    "latency_ms": { "type": "number", "minimum": 0 },
+    "cost_usd": { "type": "number", "minimum": 0 },
+    "cache_status": { "type": "string", "enum": ["hit", "miss", "bypass", "error"] },
+    "pred": { "type": "object" },
+    "ref": { "type": "object" },
+    "score": {
+      "type": "object",
+      "description": "Metric values keyed by metric name (e.g. field_f1, token_f1).",
+      "additionalProperties": { "type": ["number", "boolean", "string", "null"] }
+    },
+    "redacted_text": {
+      "type": "string",
+      "description": "PII-redacted OCR text passed to LLM (if track1/track2)."
+    },
+    "pii_spans": {
+      "type": "array",
+      "description": "Spans of PII that were redacted in this run.",
+      "items": {
+        "type": "object",
+        "required": ["type", "start", "end"],
+        "properties": {
+          "type": { "type": "string" },
+          "start": { "type": "integer", "minimum": 0 },
+          "end": { "type": "integer", "minimum": 0 },
+          "original_hash": { "type": "string" }
+        }
+      }
+    },
+    "error": { "type": "string" }
+  }
+}
