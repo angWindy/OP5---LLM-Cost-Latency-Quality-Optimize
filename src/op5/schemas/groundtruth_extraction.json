@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://op5.local/schemas/groundtruth_extraction.json",
+  "title": "GT.Extraction",
+  "description": "Ground-truth for Track 1 extraction (fields + tables).",
+  "type": "object",
+  "required": ["case_id", "fields", "tables", "schema_version"],
+  "properties": {
+    "case_id": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "fields": {
+      "type": "object",
+      "description": "Flat key-value pairs expected from extraction.",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"]
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "rows"],
+        "properties": {
+          "name": { "type": "string" },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "pii_spans": {
+      "type": "array",
+      "description": "Reference PII spans for the redaction scorer.",
+      "items": {
+        "type": "object",
+        "required": ["type", "start", "end"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["cccd", "phone_vn", "email", "tax_id", "bank_account", "vin", "license_plate", "person_name"]
+          },
+          "start": { "type": "integer", "minimum": 0 },
+          "end": { "type": "integer", "minimum": 0 },
+          "original": { "type": "string" }
+        }
+      }
+    }
+  }
+}

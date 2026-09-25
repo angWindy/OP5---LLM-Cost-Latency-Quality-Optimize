@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://op5.local/schemas/groundtruth_rag.json",
+  "title": "GT.RAG",
+  "description": "Ground-truth for Track 2 RAG question answering.",
+  "type": "object",
+  "required": ["case_id", "question", "answer", "source_pages", "is_refusable"],
+  "properties": {
+    "case_id": { "type": "string" },
+    "question": { "type": "string" },
+    "answer": { "type": "string" },
+    "source_pages": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "is_refusable": {
+      "type": "boolean",
+      "description": "True if the question is out-of-scope and the LLM should refuse."
+    },
+    "expected_citation_pages": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    }
+  }
+}

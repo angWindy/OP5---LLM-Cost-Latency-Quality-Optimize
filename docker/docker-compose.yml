@@ -1,0 +1,94 @@
+# Phase 03 Docker storage stack
+# ChromaDB   - vector store for RAG embeddings (port 8000)
+# Postgres   - metadata + redaction audit log (port 5432)
+# localstack - S3-compatible object storage (port 4566) for OCR scanned + redacted text dumps
+# Redis      - intermediate cache: OCR result, embedding cache, rate-limit (port 6379)
+#
+# Note: MinIO image is blocked on this host's Docker registry. We use localstack's S3
+# endpoint instead (boto3-compatible, same API as MinIO/AWS S3).
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml down
+#   docker compose -f docker/docker-compose.yml ps
+#
+# All credentials are DEV-ONLY. Rotate before any non-local deployment.
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: op5-chromadb
+    restart: unless-stopped
+    ports:
+      - "${CHROMA_PORT:-8000}:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chroma_data:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: op5-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-op5}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-op5}
+      POSTGRES_DB: ${POSTGRES_DB:-op5}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-op5} -d ${POSTGRES_DB:-op5}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  s3:
+    image: localstack/localstack:3.0
+    container_name: op5-s3
+    restart: unless-stopped
+    ports:
+      - "${S3_PORT:-4566}:4566"
+    environment:
+      - SERVICES=s3
+      - DEBUG=0
+      - PERSISTENCE=1
+      - AWS_DEFAULT_REGION=us-east-1
+      - LOCALSTACK_HOST=localhost
+    volumes:
+      - s3_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -q '\"s3\": *\"available\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: op5-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  chroma_data:
+  pg_data:
+  s3_data:
+  redis_data:
