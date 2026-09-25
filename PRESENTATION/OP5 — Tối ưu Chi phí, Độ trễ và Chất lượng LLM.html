@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OP5 — Tối ưu Chi phí, Độ trễ và Chất lượng LLM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#F7F5F0;
+    --ink:#2B2B2B;
+    --ink-soft:#6B675F;
+    --terracotta:#C86D51;
+    --line:#DCD6C8;
+    --serif:'Playfair Display', Georgia, serif;
+    --sans:'Inter', -apple-system, sans-serif;
+    --slide-scale:1.2;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--cream);
+    color:var(--ink);
+    font-family:var(--sans);
+    overflow:hidden;
+  }
+
+  .deck{
+    position:relative;
+    height:100%;
+    width:100%;
+  }
+
+  /* Every slide shares the same frame: fixed-position kicker at top,
+     then a body area that centers vertically in the remaining space.
+     This keeps "Mục X" anchored at the same spot on every slide. */
+  .slide{
+    display:none;
+    height:100%;
+    width:100%;
+    padding:9vh 9vw 8vh 9vw;
+    flex-direction:column;
+    position:relative;
+    zoom:var(--slide-scale);
+  }
+  @supports not (zoom: 1){
+    .slide{
+      transform:scale(var(--slide-scale));
+      transform-origin:top left;
+      width:calc(100% / var(--slide-scale));
+      height:calc(100% / var(--slide-scale));
+    }
+  }
+  .slide.active{display:flex;}
+
+  .kicker{
+    flex:none;
+    font-family:var(--sans);
+    font-size:12.5px;
+    letter-spacing:.04em;
+    color:var(--terracotta);
+    margin:0 0 18px 0;
+    font-weight:500;
+  }
+  .kicker::before{
+    content:"";
+    display:inline-block;
+    width:22px;
+    height:1px;
+    background:var(--terracotta);
+    margin-right:10px;
+    vertical-align:middle;
+  }
+
+  .slide-body{
+    flex:1 1 auto;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    min-height:0;
+  }
+
+  h1.title{
+    font-family:var(--serif);
+    font-weight:600;
+    font-size:clamp(30px,4.6vw,58px);
+    line-height:1.12;
+    margin:0 0 20px 0;
+    max-width:14ch;
+  }
+  h2.heading{
+    font-family:var(--serif);
+    font-weight:600;
+    font-size:clamp(26px,3.4vw,42px);
+    line-height:1.16;
+    margin:0 0 6px 0;
+  }
+
+  .rule{
+    border:none;
+    border-top:1px solid var(--line);
+    margin:34px 0 30px 0;
+    width:100%;
+    flex:none;
+  }
+
+  .cols{
+    display:flex;
+    gap:64px;
+    align-items:flex-start;
+  }
+  .col{flex:1; min-width:0;}
+
+  .label{
+    font-size:11.5px;
+    letter-spacing:.03em;
+    color:var(--ink-soft);
+    margin:0 0 14px 0;
+    font-weight:500;
+  }
+
+  ul.ed-list{
+    list-style:none;
+    margin:0;
+    padding:0;
+  }
+  ul.ed-list li{
+    font-size:clamp(14px,1.15vw,16.5px);
+    line-height:1.65;
+    padding:12px 0;
+    border-top:1px solid var(--line);
+    max-width:56ch;
+  }
+  ul.ed-list li:first-child{border-top:none;}
+  ul.ed-list strong{font-weight:600;}
+
+  ol.q-list{
+    list-style:none;
+    margin:0;
+    padding:0;
+    counter-reset:q;
+  }
+  ol.q-list li{
+    counter-increment:q;
+    display:flex;
+    gap:18px;
+    padding:14px 0;
+    border-top:1px solid var(--line);
+    font-size:clamp(14px,1.15vw,16.5px);
+    line-height:1.6;
+    max-width:58ch;
+  }
+  ol.q-list li:first-child{border-top:none;}
+  ol.q-list li::before{
+    content:counter(q,decimal-leading-zero);
+    font-family:var(--serif);
+    font-style:italic;
+    color:var(--terracotta);
+    font-size:15px;
+    flex:none;
+    padding-top:1px;
+  }
+
+  .quote-block{
+    border-left:2px solid var(--terracotta);
+    padding-left:26px;
+    margin:28px 0 0 0;
+    max-width:60ch;
+  }
+  .quote-block p{
+    font-family:var(--serif);
+    font-style:italic;
+    font-weight:500;
+    font-size:clamp(17px,1.7vw,22px);
+    line-height:1.55;
+    margin:0;
+    color:var(--ink);
+  }
+  /* Caption under a centered hero image: mirrors the image's centering */
+  .quote-block.centered{
+    border-left:none;
+    border-top:2px solid var(--terracotta);
+    padding-left:0;
+    padding-top:22px;
+    margin:26px auto 0 auto;
+    max-width:56ch;
+    text-align:center;
+  }
+
+  /* Image-led slides: the frame always spans the full content width,
+     so every image slide reads at the same scale ("đồng nhất"). */
+  .img-slot{
+    width:100%;
+    border:1px solid var(--line);
+    background:repeating-linear-gradient(135deg, transparent 0 11px, rgba(43,43,43,.035) 11px 12px);
+    height:clamp(220px,44vh,440px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--ink-soft);
+    font-size:12.5px;
+    letter-spacing:.02em;
+  }
+  .img-slot img{
+    max-width:100%;
+    max-height:100%;
+    width:100%;
+    object-fit:contain;
+    display:block;
+  }
+
+  .meta-row{
+    display:flex;
+    gap:48px;
+    flex-wrap:wrap;
+  }
+  .meta-item{min-width:170px;}
+  .meta-item .label{margin-bottom:8px;}
+  .meta-item .val{
+    font-family:var(--serif);
+    font-size:clamp(17px,1.6vw,21px);
+    font-weight:500;
+  }
+  .meta-item .val small{
+    display:block;
+    font-family:var(--sans);
+    font-weight:400;
+    font-size:13px;
+    color:var(--ink-soft);
+    margin-top:4px;
+  }
+
+  /* Cover slide — single centered composition, no offset content block */
+  .cover-body{
+    justify-content:center;
+    align-items:center;
+    text-align:center;
+  }
+  .cover-title{
+    max-width:17ch;
+    margin:0 auto;
+    text-align:center;
+  }
+  .cover-bottom{
+    flex:none;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    border-top:1px solid var(--line);
+    padding-top:22px;
+  }
+  .cover-bottom .phase{
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:15px;
+    color:var(--terracotta);
+  }
+  .cover-bottom .eyebrow{
+    font-size:12.5px;
+    letter-spacing:.05em;
+    color:var(--ink-soft);
+  }
+  .cover-num{
+    font-family:var(--serif);
+    font-size:15vh;
+    line-height:1;
+    color:var(--ink);
+    opacity:.06;
+    position:absolute;
+    right:6vw;
+    bottom:14vh;
+    font-weight:600;
+    pointer-events:none;
+  }
+
+  /* Thanks slide — same frame, centered body */
+  .thanks-body{
+    justify-content:center;
+    align-items:center;
+    text-align:center;
+  }
+  .thanks-body h1{max-width:none;}
+
+  /* Nav */
+  .nav{
+    position:fixed;
+    left:0; right:0; bottom:0;
+    padding:0 9vw 4vh 9vw;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    pointer-events:none;
+  }
+  .nav > *{pointer-events:auto;}
+  .nav-btns{display:flex; gap:10px;}
+  .nav-btn{
+    width:40px;height:40px;
+    border:1px solid var(--ink);
+    background:transparent;
+    color:var(--ink);
+    border-radius:50%;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;
+    transition:background .15s ease, color .15s ease;
+  }
+  .nav-btn:hover{background:var(--ink); color:var(--cream);}
+  .nav-btn:disabled{opacity:.25; cursor:default;}
+  .nav-btn:disabled:hover{background:transparent; color:var(--ink);}
+  .progress{
+    font-family:var(--sans);
+    font-size:12px;
+    color:var(--ink-soft);
+    letter-spacing:.04em;
+  }
+  .progress b{color:var(--ink); font-weight:600;}
+
+  @media (max-width:680px){
+    .cols{flex-direction:column; gap:26px;}
+    .meta-row{gap:26px;}
+    .slide{padding:8vh 7vw 12vh 7vw;}
+    .img-slot{height:clamp(160px,34vh,320px);}
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      /* Editorial print aesthetic stays consistent regardless of system theme */
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+  <!-- Slide 1: Cover -->
+  <section class="slide active">
+    <span class="kicker">Slide thuyết trình tổng hợp</span>
+    <div class="slide-body cover-body">
+      <h1 class="title cover-title">OP5 — Tối ưu Chi phí, Độ trễ và Chất lượng khi gọi LLM</h1>
+    </div>
+    <div class="cover-bottom" style="justify-content:flex-end;">
+      <span class="eyebrow">01 / 11</span>
+    </div>
+    <div class="cover-num">01</div>
+  </section>
+
+  <!-- Slide 2: Bài toán -->
+  <section class="slide">
+    <span class="kicker">Mục 2</span>
+    <div class="slide-body">
+      <h2 class="heading">Bài toán (OP5)</h2>
+      <hr class="rule">
+      <div class="cols">
+        <div class="col">
+          <p class="label">Bối cảnh</p>
+          <ul class="ed-list">
+            <li>Bài toán đặt ra đồng thời ba mục tiêu thường xung đột</li>
+            <li><strong>Giảm chi phí</strong></li>
+            <li><strong>Giảm độ trễ</strong></li>
+            <li><strong>Giữ / tăng chất lượng</strong></li>
+          </ul>
+        </div>
+        <div class="col">
+          <p class="label">Câu hỏi nghiên cứu</p>
+          <ol class="q-list">
+            <li>Nén prompt (compression) có giúp giảm chi phí mà không hại chất lượng không?</li>
+            <li>Router tất định theo độ khó / độ dài context có tốt hơn "luôn dùng model mạnh" không?</li>
+            <li>Khi kết hợp nhiều đòn bẩy (nén + chọn lọc context + routing) thì đường Pareto dịch chuyển thế nào?</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 3: LongLLMLingua -->
+  <section class="slide">
+    <span class="kicker">Mục 3</span>
+    <div class="slide-body">
+      <h2 class="heading">LongLLMLingua</h2>
+      <hr class="rule">
+      <p class="label">Ý tưởng cốt lõi</p>
+      <div class="img-slot"><img src="./img/pic1.jpg" alt="LongLLMLingua — ý tưởng cốt lõi"></div>
+      <div class="quote-block centered">
+        <p>LongLLMLingua = nén thông minh + sắp xếp lại, giữ lại phần quan trọng nhất với câu hỏi, bỏ phần thừa.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 4: Thiết lập thí nghiệm -->
+  <section class="slide">
+    <span class="kicker">Mục 4</span>
+    <div class="slide-body">
+      <h2 class="heading">Thiết lập thí nghiệm</h2>
+      <hr class="rule">
+      <div class="meta-row">
+        <div class="meta-item">
+          <p class="label">Tập dữ liệu</p>
+          <p class="val">LongBench-style<small>Q&amp;A đa ngữ cảnh dài</small></p>
+        </div>
+        <div class="meta-item">
+          <p class="label">LLM đích</p>
+          <p class="val">Gemini 3.5<small>Flash Lite</small></p>
+        </div>
+        <div class="meta-item">
+          <p class="label">LLM as judge</p>
+          <p class="val">DeepSeek<small>V4 Pro</small></p>
+        </div>
+      </div>
+      <div class="cols" style="margin-top:36px;">
+        <div class="col">
+          <p class="label">Cấu hình so sánh</p>
+          <ul class="ed-list">
+            <li><strong>Baseline</strong> — full context, không nén</li>
+            <li><strong>LongLLMLingua</strong> — nén context xuống 70% / 60% / 50% / 40% context ban đầu</li>
+          </ul>
+        </div>
+        <div class="col">
+          <p class="label">Metric</p>
+          <ul class="ed-list">
+            <li><strong>Chất lượng</strong> — dựa vào LLM as judge</li>
+            <li><strong>Chi phí</strong> — % token save</li>
+            <li><strong>Độ trễ</strong> — P50, P95</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 5: Kết quả — 5.1 -->
+  <section class="slide">
+    <span class="kicker">Mục 5 · Kết quả</span>
+    <div class="slide-body">
+      <h2 class="heading">5.1 — LongLLMLingua giảm mạnh prompt tokens</h2>
+      <hr class="rule">
+      <div class="img-slot"><img src="./img/pic2.jpg" alt="5.1 — LongLLMLingua giảm prompt tokens"></div>
+    </div>
+  </section>
+
+  <!-- Slide 6: Kết quả — 5.2 -->
+  <section class="slide">
+    <span class="kicker">Mục 5 · Kết quả</span>
+    <div class="slide-body">
+      <h2 class="heading">5.2 — Độ chính xác</h2>
+      <hr class="rule">
+      <div class="img-slot"><img src="./img/pic4.jpg" alt="5.2 — Chất lượng giữ được"></div>
+    </div>
+  </section>
+
+  <!-- Slide 7: Kết quả — 5.3 -->
+  <section class="slide">
+    <span class="kicker">Mục 5 · Kết quả</span>
+    <div class="slide-body">
+      <h2 class="heading">5.3 — Độ trễ</h2>
+      <hr class="rule">
+      <div class="img-slot"><img src="./img/pic3.jpg" alt="5.3 — Độ trễ"></div>
+    </div>
+  </section>
+
+  <!-- Slide 8: Kết quả — 5.4 -->
+  <section class="slide">
+    <span class="kicker">Mục 5 · Kết quả</span>
+    <div class="slide-body">
+      <h2 class="heading">5.4 — Tradeoff</h2>
+      <hr class="rule">
+      <div class="quote-block">
+        <p>Giảm chi phí input token cùng với latency, vẫn giữ nguyên chất lượng câu trả lời nhưng tăng thêm chi phí sử dụng GPU.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 9: Điểm cần khắc phục -->
+  <section class="slide">
+    <span class="kicker">Mục 6</span>
+    <div class="slide-body">
+      <h2 class="heading">Điểm cần khắc phục</h2>
+      <hr class="rule">
+      <ul class="ed-list" style="max-width:70ch;">
+        <li>Đang chạy trên <strong>LongBench-style public</strong> dữ liệu tiếng Anh</li>
+        <li><strong>Latency</strong> còn xuất hiện một số trường hợp ngoại lai phản hồi chậm ảnh hưởng đến trải nghiệm</li>
+      </ul>
+      <div class="img-slot" style="margin-top:28px;"><img src="./img/pic5.jpg" alt="Điểm cần khắc phục"></div>
+    </div>
+  </section>
+
+  <!-- Slide 10: Điểm cần khắc phục — model flash -->
+  <section class="slide">
+    <span class="kicker">Mục 6</span>
+    <div class="slide-body">
+      <h2 class="heading">Điểm cần khắc phục</h2>
+      <hr class="rule">
+      <div class="img-slot"><img src="./img/pic6.jpg" alt="Model Flash — Gemini 3.5 Flash Lite"></div>
+      <div class="quote-block centered">
+        <p>Model Flash: Gemini 3.5 Flash Lite không phản ánh đúng được câu trả lời cho các câu hỏi yêu cầu suy luận.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 11: Thanks -->
+  <section class="slide">
+    <span class="kicker">Slide 7</span>
+    <div class="slide-body thanks-body">
+      <h1 class="title" style="font-size:clamp(40px,7vw,84px);">Cảm ơn</h1>
+    </div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <span class="progress"><b id="curNum">01</b> / <span id="totNum">07</span></span>
+  <div class="nav-btns">
+    <button class="nav-btn" id="prevBtn" aria-label="Slide trước">←</button>
+    <button class="nav-btn" id="nextBtn" aria-label="Slide sau">→</button>
+  </div>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let idx = 0;
+  const curNum = document.getElementById('curNum');
+  const totNum = document.getElementById('totNum');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  totNum.textContent = String(total).padStart(2,'0');
+
+  function render(){
+    slides.forEach((s,i)=> s.classList.toggle('active', i===idx));
+    curNum.textContent = String(idx+1).padStart(2,'0');
+    prevBtn.disabled = idx===0;
+    nextBtn.disabled = idx===total-1;
+  }
+  function go(delta){
+    idx = Math.min(total-1, Math.max(0, idx+delta));
+    render();
+  }
+  prevBtn.addEventListener('click', ()=>go(-1));
+  nextBtn.addEventListener('click', ()=>go(1));
+  window.addEventListener('keydown', (e)=>{
+    if(e.key==='ArrowRight' || e.key===' ') go(1);
+    if(e.key==='ArrowLeft') go(-1);
+  });
+  let touchX=null;
+  window.addEventListener('touchstart', e=>{touchX=e.touches[0].clientX;});
+  window.addEventListener('touchend', e=>{
+    if(touchX===null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    if(Math.abs(dx)>50) go(dx<0 ? 1 : -1);
+    touchX=null;
+  });
+  render();
+</script>
+
+</body>
+</html>

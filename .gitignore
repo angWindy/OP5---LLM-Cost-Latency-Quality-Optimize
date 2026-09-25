@@ -47,6 +47,7 @@ results/
 data/raw/
 data/processed/
 data/cache/
+data/scan/
 
 # Secrets / local config
 .env
