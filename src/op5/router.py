@@ -1,9 +1,12 @@
 """Deterministic router for Phase 03.
 
-Routes an input (Track 1 extraction or Track 2 RAG) to one of three model tiers:
-- cheap:  gemini-3.5-flash-lite (smallest, fastest, lowest cost)
-- mid:    gemini-3.1-pro        (middle)
-- strong: gemini-3.1-pro-strong (largest, slowest, highest quality)
+Routes an input (Track 1 extraction or Track 2 RAG) to a model tier
+(cheap / mid / strong) for observability and cost tracking.
+
+IMPORTANT: As of 2026-09-26 all tiers route to the SAME model:
+  gemini-3.5-flash-lite ($0.075 / $0.30 per 1M tokens).
+The tier labels are kept for logging and cost analytics only —
+do NOT change DEPLOYMENTS to add stronger models without a paired experiment.
 
 The rules are pure functions of input features (no LLM calls, fully reproducible).
 Per master plan §4.2:
@@ -25,9 +28,12 @@ from dataclasses import dataclass
 from typing import Any
 
 DEPLOYMENTS = {
+    # Single model for all tiers — gemini-3.5-flash-lite is fast, cheap,
+    # and strong enough for both extraction (Track 1) and RAG (Track 2).
+    # Tier labels are kept for observability / cost tracking only.
     "cheap": "gemini-3.5-flash-lite",
-    "mid": "gemini-3.1-pro",
-    "strong": "gemini-3.1-pro-strong",
+    "mid": "gemini-3.5-flash-lite",
+    "strong": "gemini-3.5-flash-lite",
 }
 
 
