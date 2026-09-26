@@ -175,6 +175,15 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--policy", default="src/op5/redact/policy.yaml")
     parser.add_argument("--output", default=str(OUTPUT))
+    parser.add_argument(
+        "--gt-source",
+        choices=["inline", "corpus"],
+        default="inline",
+        help="inline = the 4 hardcoded real-format PII cases (fast, design-bypass-safe). "
+             "corpus = run OCR over --limit scanned PDFs and match against GT PII spans in "
+             "data/processed/phase03_synth_contracts.jsonl (slow, real-ish precision/recall).",
+    )
+    parser.add_argument("--skip-ocr", action="store_true", help="Skip OCR phase entirely (only run inline cases).")
     args = parser.parse_args()
 
     out_path = Path(args.output)
@@ -273,16 +282,37 @@ def main() -> int:
             if pdfs:
                 break
 
-    if pdfs and args.limit > 0:
+    if pdfs and args.limit > 0 and not args.skip_ocr:
         ocr_rows = []
         for pdf in pdfs:
             case_id = pdf.stem
             text = _run_ocr_smoke(pdf, args.provider)
             redacted = redactor.redact_text(text)
+
+            # When --gt-source corpus, also compute value-level precision/recall
+            # by matching GT PII values (derived from synth_contracts GT) against
+            # the OCR text + redactor output. SYNTH values are intentionally
+            # obfuscated so recall will be ~0 on those; that's a known caveat
+            # (worklog §3.6). We log the result so operators see the trade-off.
+            corpus_pii_block = None
+            if args.gt_source == "corpus":
+                gt_case_id = _normalize_case_id(case_id)
+                gt_spans = load_gt_pii_spans(gt_case_id)
+                tp, fp, fn = _match_spans(text, gt_spans, redactor)
+                corpus_pii_block = {
+                    "tp": tp,
+                    "fp": fp,
+                    "fn": fn,
+                    "precision": round(tp / max(1, tp + fp), 3),
+                    "recall": round(tp / max(1, tp + fn), 3),
+                    "n_gt_spans": len(gt_spans),
+                }
+
             ocr_rows.append(
                 {
                     "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     "track": "redaction_smoke_ocr",
+                    "gt_source": args.gt_source,
                     "case_id": case_id,
                     "provider": args.provider,
                     "span_count_by_type": redacted.span_count_by_type,
@@ -291,6 +321,7 @@ def main() -> int:
                         "ocr_text_length": len(text),
                         "redacted_text_length": len(redacted.text),
                         "n_spans": len(redacted.spans),
+                        **(corpus_pii_block or {}),
                     },
                 }
             )
@@ -312,6 +343,8 @@ def main() -> int:
     print(f"  precision: {precision:.3f}  (target >= 0.95)")
     print(f"  recall:    {recall:.3f}  (target >= 0.90)")
     print(f"  f1:        {f1:.3f}")
+    if args.gt_source == "corpus":
+        print(f"  gt_source: corpus (OCR-derived rows added with per-case value-level P/R)")
     print(f"  output: {out_path}")
     return 0
 

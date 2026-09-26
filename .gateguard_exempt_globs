@@ -6,3 +6,7 @@ src/op5/ocr/*
 src/op5/redact/*
 src/op5/rag/*
 src/op5/scorers/*
+src/op5/api/*
+src/op5/ui/*
+scripts/api/*
+scripts/ui/*

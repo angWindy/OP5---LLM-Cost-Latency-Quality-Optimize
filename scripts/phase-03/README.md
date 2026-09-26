@@ -48,7 +48,41 @@ falls back to Persistent Chroma, SQLite, local FS, and an in-memory dict.
 ## Smoke-test vs production
 
 By default the Track 1 & Track 2 runners use a **stub LLM** that parses the
-synthesized `key: value` corpus text. To switch to a live Gemini key, edit
-`run_extraction_track1.py` / `run_rag_track2.py` and replace `_stub_llm(prompt)`
-with `GeminiClient.generate(prompt)`. The cost/latency entries are still
-illustrative until then.
+synthesized `key: value` corpus text. To switch to live Gemini, pass `--llm gemini`:
+
+```bash
+# Smoke (no API key needed, no cost)
+python scripts/phase-03/run_extraction_track1.py --llm stub --limit 15
+python scripts/phase-03/run_rag_track2.py          --llm stub --limit 30
+
+# Production (requires GOOGLE_API_KEY or GOOGLE_API_KEYS in env)
+python scripts/phase-03/smoke_gemini_key.py         # 1-shot probe
+python scripts/phase-03/run_extraction_track1.py --llm gemini --limit 2 \
+    --output results/phase-03-track1-live.jsonl
+python scripts/phase-03/run_rag_track2.py --llm gemini --limit 2 \
+    --output results/phase-03-track2-live.jsonl
+python scripts/phase-03/score_track1.py --input results/phase-03-track1-live.jsonl \
+    --output results/phase-03-track1-scores-live.jsonl
+python scripts/phase-03/score_track2.py --input results/phase-03-track2-live.jsonl \
+    --output results/phase-03-track2-scores-live.jsonl
+python scripts/phase-03/pareto_plot.py \
+    --track1-scores results/phase-03-track1-scores-live.jsonl \
+    --track2-scores results/phase-03-track2-scores-live.jsonl \
+    --out-t1 doc/figs/phase-03-track1-live.png \
+    --out-t2 doc/figs/phase-03-track2-live.png
+```
+
+Live runs surface real `cost_usd`, `latency_ms`, `input_tokens`, `output_tokens` directly
+from the API; the wrapper's pricing helper reads `src/op5/llm/profiles/gemini.yaml`.
+For the full FastAPI + Streamlit UI demo (Phase 04), see `scripts/api/README.md`
+and `scripts/ui/README.md`.
+
+For the end-to-end smoke test over the FastAPI service (assumes the API is already
+running on `$OP5_API_URL` or `http://localhost:8000`):
+
+```bash
+python scripts/phase-03/smoke_e2e.py
+```
+
+Six sequential checks (health, extract, ask, inspect, JSONL cost > 0, Pareto PNG); exits
+non-zero on first failure.

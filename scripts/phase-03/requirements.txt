@@ -4,7 +4,9 @@
 
 # OCR providers (all CPU-friendly, no torch)
 paddleocr>=2.7
-paddlepaddle>=2.6
+# Pinned: paddlepaddle 3.x has oneDNN/Pir CPU conversion issues on hosts without AVX-512.
+# Worklog 2026-09-25 §3.2 documents this; pin to the last 2.6 line that works on CPU.
+paddlepaddle==2.6.0
 pytesseract>=0.3.10
 easyocr>=1.7
 

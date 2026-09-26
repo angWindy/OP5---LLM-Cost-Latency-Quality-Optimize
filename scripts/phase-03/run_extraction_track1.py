@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from op5.rag.prompts import track1_prompt  # noqa: E402
 from op5.redact import Redactor, default_policy  # noqa: E402
 from op5.router import extract_features_track1, route  # noqa: E402
+from op5.llm import LLMWrapper, make_llm_wrapper  # noqa: E402
 
 OUTPUT = Path("results/phase-03-track1.jsonl")
 
@@ -62,8 +63,8 @@ def _stub_llm(prompt: str) -> str:
     The SYNTH corpus encodes all fields as `key: value` lines inside the OCR
     text. For this offline smoke-test we just lift `key: value` pairs from the
     text section of the prompt. This exercises the scorer end-to-end without
-    requiring live Gemini credentials. Swap this for GeminiClient.generate()
-    when wiring real Gemini keys in Phase 04.
+    requiring live Gemini credentials. Use --llm gemini to swap in the live
+    wrapper when GOOGLE_API_KEY(S) is configured.
     """
     import re
 
@@ -76,6 +77,13 @@ def _stub_llm(prompt: str) -> str:
             if kv:
                 extracted[kv.group(1).strip()] = kv.group(2).strip()
     return json.dumps(extracted, ensure_ascii=False)
+
+
+def _build_live_call(wrapper: LLMWrapper, model: str):
+    """Return a (prompt) -> str closure bound to a specific model."""
+    def call(prompt: str) -> str:
+        return wrapper.call(prompt, model=model)
+    return call
 
 
 
@@ -101,10 +109,24 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=15)
     parser.add_argument("--output", default=str(OUTPUT))
     parser.add_argument("--scan-dir", default=None)
+    parser.add_argument(
+        "--llm",
+        choices=["stub", "gemini"],
+        default="stub",
+        help="LLM backend. 'stub' uses the offline key:value extractor; 'gemini' calls live Gemini API.",
+    )
     args = parser.parse_args()
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    live_wrapper: LLMWrapper | None = None
+    if args.llm == "gemini":
+        try:
+            live_wrapper = make_llm_wrapper()
+        except RuntimeError as exc:
+            print(f"Live LLM init failed: {exc}", file=sys.stderr)
+            return 1
 
     gt_path = Path("data/processed/phase03_synth_contracts.jsonl")
     if not gt_path.exists():
@@ -135,32 +157,62 @@ def main() -> int:
             features = extract_features_track1(ocr_proc, EXPECTED_FIELDS)
             routing = route(features, "track1")
             routing["tier"] = cfg["tier"]
-            routing["deployment_id"] = "gemini-3.1-pro-strong" if cfg["tier"] == "strong" else "gemini-3.5-flash-lite"
+            routing["deployment_id"] = "gemini-3.5-flash-lite"
+            deployment = routing["deployment_id"]
+
+            # Pick the LLM callable: live Gemini wrapper or offline stub.
+            if live_wrapper is not None:
+                provider_name = "google"
+            else:
+                provider_name = "gemini-stub"
 
             t0 = time.time()
-            try:
+            if live_wrapper is not None:
+                llm_meta = live_wrapper.generate(prompt, model=deployment, max_output_tokens=512)
+                llm_raw = llm_meta.text or ""
+                latency_ms = llm_meta.latency_ms or ((time.time() - t0) * 1000)
+                input_tokens = llm_meta.input_tokens
+                output_tokens = llm_meta.output_tokens
+                cost_usd = llm_meta.cost_usd
+                cache_status = llm_meta.cache_status
+            else:
                 llm_raw = _stub_llm(prompt)
-                llm_parsed = json.loads(llm_raw)
+                latency_ms = (time.time() - t0) * 1000
+                input_tokens = len(prompt) // 4
+                output_tokens = len(llm_raw) // 4
+                cost_usd = 0.0001  # gemini-3.5-flash-lite for all tiers
+                cache_status = "bypass"
+
+            # Strip markdown code-fences the model sometimes wraps JSON in.
+            stripped = llm_raw.strip()
+            if stripped.startswith("```"):
+                first_nl = stripped.find("\n")
+                if first_nl > 0:
+                    stripped = stripped[first_nl + 1 :]
+                if stripped.endswith("```"):
+                    stripped = stripped[:-3]
+                stripped = stripped.strip()
+
+            try:
+                llm_parsed = json.loads(stripped) if stripped else {}
                 if not isinstance(llm_parsed, dict):
                     llm_parsed = {}
             except Exception:
-                llm_raw = "{}"
                 llm_parsed = {}
-            latency_ms = (time.time() - t0) * 1000
 
             rows.append({
                 "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "track": "track1",
                 "case_id": case_id,
                 "config": cfg_name,
-                "provider": "gemini-stub",
-                "model": routing["deployment_id"],
-                "deployment_id": routing["deployment_id"],
-                "input_tokens": len(prompt) // 4,
-                "output_tokens": len(llm_raw) // 4,
+                "provider": provider_name,
+                "model": deployment,
+                "deployment_id": deployment,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
                 "latency_ms": latency_ms,
-                "cost_usd": 0.0001 if cfg["tier"] == "cheap" else 0.005,
-                "cache_status": "bypass",
+                "cost_usd": cost_usd,
+                "cache_status": cache_status,
                 "pred": {"raw_llm_resp": llm_raw, "extracted_fields": llm_parsed, "redacted_text_len": len(redacted_text)},
                 "ref": {"expected_fields": EXPECTED_FIELDS, "gt_case_id": synth_id, "gt_fields": rec.get("ground_truth_fields", {})},
                 "score": {},
