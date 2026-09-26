@@ -1,0 +1,37 @@
+# Tell Cursor (and any agents) what NOT to load into context by default.
+
+# Large directories — datasets, raw downloads, eval outputs.
+data/raw/**
+data/processed/**
+data/cache/**
+results/**
+*.parquet
+*.arrow
+*.bin
+
+# Heavy Python caches / build outputs.
+__pycache__/**
+*.pyc
+*.pyo
+.mypy_cache/**
+.pytest_cache/**
+.ruff_cache/**
+*.egg-info/**
+build/**
+dist/**
+.venv/**
+venv/**
+
+# Large notebooks / model checkpoints.
+*.ipynb_checkpoints/**
+*.pt
+*.safetensors
+*.gguf
+*.onnx
+
+# HuggingFace caches (auto-created by `datasets` / `transformers`).
+~/.cache/huggingface/**
+
+# Allow small readmes inside otherwise-ignored trees so the structure is discoverable.
+!data/README.md
+!data/**/README.md

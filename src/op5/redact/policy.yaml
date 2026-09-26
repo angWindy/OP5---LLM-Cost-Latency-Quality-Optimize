@@ -1,0 +1,23 @@
+# Phase 03 Sensitive-PII redaction policy
+# Used by Redactor to decide which categories to mask and how.
+
+policy_version: phase03.redact.v1
+default_action: mask
+
+categories:
+  cccd: { action: mask, mask: "[REDACTED:CCCD]" }
+  phone_vn: { action: mask, mask: "[REDACTED:PHONE]" }
+  email: { action: mask, mask: "[REDACTED:EMAIL]" }
+  tax_id: { action: mask, mask: "[REDACTED:MST]" }
+  bank_account: { action: mask, mask: "[REDACTED:STK]" }
+  vin: { action: mask, mask: "[REDACTED:VIN]" }
+  license_plate: { action: mask, mask: "[REDACTED:PLATE]" }
+  # Theo "quy định mua bán" — buyer/seller names là field nghiệp vụ nên KHONG redact.
+  person_name: { action: keep_token, mask: "[REDACTED:NAME]" }
+
+exempt_context_keys:
+  - contract_no
+  - model
+  - version
+  - color
+  - delivery_date

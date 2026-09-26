@@ -1,0 +1,39 @@
+# Phase 03 — Sensitive-PII Redaction Policy Example
+
+> Mirror of `src/op5/redact/policy.yaml` for documentation purposes.
+> The actual policy used at runtime is loaded from `src/op5/redact/policy.yaml`.
+
+```yaml
+# File: doc/policies/sensitive-pii-redaction.example.yaml
+policy_version: phase03.redact.v1
+default_action: mask          # mask | hash | keep_token
+categories:
+  cccd:           { action: mask,       mask: "[REDACTED:CCCD]" }
+  phone_vn:       { action: mask,       mask: "[REDACTED:PHONE]" }
+  email:          { action: mask,       mask: "[REDACTED:EMAIL]" }
+  tax_id:         { action: mask,       mask: "[REDACTED:MST]" }
+  bank_account:   { action: mask,       mask: "[REDACTED:STK]" }
+  vin:            { action: mask,       mask: "[REDACTED:VIN]" }
+  license_plate:  { action: mask,       mask: "[REDACTED:PLATE]" }
+  person_name:    { action: keep_token, allowed_in: ["buyer_name", "seller_rep"] }
+
+# Buyer/seller names la field nghiep vu hop dong -> KHONG bi redact
+# (cần trích xuất đúng). Chỉ PII thuần (CCCD, SĐT, STK, MST, email,
+# biển số, VIN) mới bị che, để tránh lộ data vào LLM prompt + output JSON.
+exempt_context_keys:
+  - "contract_no"
+  - "model"
+  - "version"
+  - "color"
+  - "delivery_date"
+```
+
+## Giải thích action
+
+| Action | Ý nghĩa | Ví dụ |
+| ------ | -------- | ----- |
+| `mask` | Thay thế bằng mask token cố định | `0912345678` → `[REDACTED:PHONE]` |
+| `hash` | Hash SHA-256 8 ký tự đầu (vẫn truy nguyên được) | `0912345678` → `[HASH:7f8a3b2c]` |
+| `keep_token` | Giữ nguyên (chỉ dùng cho field nghiệp vụ) | `Nguyễn Văn A` → `Nguyễn Văn A` |
+
+Xem chi tiết tại: `doc/policies/sensitive-pii-redaction.md`.
