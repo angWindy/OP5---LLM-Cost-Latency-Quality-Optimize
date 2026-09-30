@@ -60,3 +60,6 @@ hf_cache/
 
 # OS
 Thumbs.db
+
+# Data
+worklog/*
